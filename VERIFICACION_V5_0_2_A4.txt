@@ -1,0 +1,20 @@
+PEP V5.0.2-A4 — VERIFICACIÓN DE CORRECCIÓN CONTROLADA
+Fecha: 2026-08-31
+
+CAMBIO APLICADO
+- Registro de Muestras muestra "Corregir a DETENIDA" únicamente para registros en estado CONTINUAR.
+- Exige contraseña CALIDAD.
+- Solicita motivo obligatorio.
+- Corrige únicamente workflow.decisionStatus: CONTINUAR -> DETENIDA.
+- Conserva workflowStage, recordStatus, analysisStatus, closedAt, DQO/Tenso y demás datos del proceso.
+- La muestra permanece en Registro de Muestras.
+- La muestra aparece automáticamente en la bandeja Detenidas al refrescar.
+- Se actualizan contadores CONTINUAR / DETENIDAS.
+- Se agrega historial QUALITY_DECISION_CORRECTION y auditoría específica.
+- La modificación genera el UPSERT normal del dominio SAMPLES para Live Sync; no se modificó el núcleo congelado de sincronización.
+
+VALIDACIONES TÉCNICAS
+- node --check src/app.js: OK
+- node --check src/modules/sample-registry.js: OK
+- node --check src/security/quality-correction-gate.js: OK
+- Service Worker cache incrementado a v502a4.
