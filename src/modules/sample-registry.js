@@ -33,6 +33,27 @@ async function transition(id,patch,action,{userId='LOCAL_USER'}={}){
   eventBus.emit('workflow.transition',{id,action,from,to,at:entry.at}); return saved;
 }
 
+async function propagateSampleIdentity(sample,before,{userId='LOCAL_USER',reason='Edición de Registro de Muestras'}={}){
+  const fields=['code','year','codeFull','clientId','branch','matrixId','groupId'];
+  const changed=fields.filter(k=>String(before?.[k]??'')!==String(sample?.[k]??''));
+  if(!changed.length)return {updated:0,domains:[]};
+  const detail=`${reason} · ${changed.map(k=>`${k}: ${before?.[k]??'—'} → ${sample?.[k]??'—'}`).join(' · ')}`;
+  let updated=0;const domains=[];
+  for(const [domain,repo] of [['LABORATORY',repositories.laboratory],['REPORTS',repositories.reports],['BILLING',repositories.billing],['RECEIVABLES',repositories.receivables]]){
+    const rows=(await repo.all()).filter(r=>r.sampleId===sample.id);
+    if(!rows.length)continue;
+    for(const row of rows){
+      const patch={};for(const k of fields)patch[k]=sample[k];
+      patch.history=[...(row.history||[]),{action:'SAMPLE_IDENTITY_PROPAGATED',at:now(),userId,detail}];
+      await repo.update(row.id,patch,{userId});updated++;
+    }
+    domains.push(domain);
+  }
+  await auditRepository.log?.({entityType:'Sample',entityId:sample.id,action:'SAMPLE_IDENTITY_PROPAGATED',userId,detail,metadata:{domains,changedFields:changed}}).catch?.(()=>{});
+  eventBus.emit('sample.identity.propagated',{sampleId:sample.id,changedFields:changed,domains});
+  return {updated,domains};
+}
+
 async function upsertClient(name,branch,userId){
   const normalized=upper(name), branchName=upper(branch); if(!normalized)throw new Error('El cliente es obligatorio.');
   const all=await repositories.clients.all(); let client=all.find(x=>upper(x.name)===normalized);
@@ -58,7 +79,13 @@ export class SampleRegistryService{
     if(!input.id)return repositories.clients.create({name,identification:clean(input.identification),branches},{userId});
     const before=await repositories.clients.get(input.id); if(!before)throw new Error('Cliente no encontrado.');
     const saved=await repositories.clients.update(input.id,{name,identification:clean(input.identification),branches},{userId});
-    if(upper(before.name)!==name){const samples=await repositories.samples.all();for(const s of samples.filter(x=>x.clientCatalogId===input.id))await repositories.samples.update(s.id,{clientId:name},{userId})}
+    if(upper(before.name)!==name){
+      const samples=await repositories.samples.all();
+      for(const sampleBefore of samples.filter(x=>x.clientCatalogId===input.id)){
+        const sampleAfter=await repositories.samples.update(sampleBefore.id,{clientId:name},{userId});
+        await propagateSampleIdentity(sampleAfter,sampleBefore,{userId,reason:'Actualización del nombre en Catálogo de Clientes'});
+      }
+    }
     return saved;
   }
   async deleteClientCatalog(id,{userId='LOCAL_USER'}={}){const used=(await repositories.samples.all()).some(x=>x.clientCatalogId===id);if(used)throw new Error('Este cliente ya está usado en muestras y no puede eliminarse. Puede editarlo.');return repositories.clients.softDelete(id,{userId})}
@@ -84,7 +111,10 @@ export class SampleRegistryService{
   async updateRegistry(id,input,{userId='LOCAL_USER'}={}){
     const current=await repositories.samples.get(id);if(!current)throw new Error('Muestra no encontrada.');const matrix=await this.matrixById(input.matrixCatalogId||input.matrixId);const code=upper(input.code),year=Number(input.year);if(!code)throw new Error('El código es obligatorio.');if(!Number.isInteger(year)||year<2000||year>2100)throw new Error('El año debe estar entre 2000 y 2100.');if(!clean(input.samplingDate))throw new Error('La fecha de muestra es obligatoria.');
     const codeFull=`${code}-${year}`;const all=await repositories.samples.all();if(all.some(x=>x.id!==id&&upper(x.codeFull)===codeFull&&x.groupId===matrix.groupId))throw new Error(`Ya existe la muestra ${codeFull} en el grupo ${matrix.groupId}.`);
-    const client=await upsertClient(input.client,input.branch,userId);return repositories.samples.update(id,{code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch:upper(input.branch),matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),observations:clean(input.observations)},{userId});
+    const client=await upsertClient(input.client,input.branch,userId);
+    const saved=await repositories.samples.update(id,{code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch:upper(input.branch),matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),observations:clean(input.observations)},{userId});
+    await propagateSampleIdentity(saved,current,{userId,reason:'Edición controlada de Registro de Muestras'});
+    return saved;
   }
   async registerAnalysis(id,values,{userId='LOCAL_USER'}={}){const s=await repositories.samples.get(id);if(s?.workflow?.workflowStage!=='ANALYSIS_REGISTRATION')throw new Error('La muestra no está en Registro de Análisis.');const req=s.workflow.requirements||{};if(req.dqo&&!clean(values.dqo))throw new Error('El valor DQO es obligatorio.');if(req.surfactants&&!clean(values.surfactants))throw new Error('El valor de tensoactivos es obligatorio.');return transition(id,{recordStatus:'INGRESADA',decisionStatus:'CONTINUAR',analysisStatus:'COMPLETED',workflowStage:'SAMPLE_REGISTRY',analysisValues:{dqo:clean(values.dqo),surfactants:clean(values.surfactants),registeredAt:now(),registeredBy:userId}},'ANALYSIS_REGISTERED_CONTINUE',{userId})}
   async sendToWaiting(id,values,{userId='LOCAL_USER'}={}){const s=await repositories.samples.get(id);if(s?.workflow?.workflowStage!=='ANALYSIS_REGISTRATION')throw new Error('La muestra no está en Registro de Análisis.');return transition(id,{recordStatus:'PLANIFICADA',decisionStatus:'PENDIENTE',analysisStatus:'WAITING_DECISION',workflowStage:'WAITING',analysisValues:{dqo:clean(values.dqo),surfactants:clean(values.surfactants),registeredAt:now(),registeredBy:userId}},'ANALYSIS_SENT_TO_WAITING',{userId})}

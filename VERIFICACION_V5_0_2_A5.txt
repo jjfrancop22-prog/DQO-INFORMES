@@ -1,0 +1,8 @@
+PEP V5.0.2-A5 — PROPAGACIÓN DE IDENTIDAD / TRAZABILIDAD
+
+Corrección aplicada:
+- Al editar una muestra, cambios de Código/Año/Cliente/Sucursal/Matriz/Grupo se propagan por sampleId a LABORATORY, REPORTS, BILLING y RECEIVABLES.
+- Al renombrar un cliente desde Catálogos, el nuevo nombre se propaga también a todas las etapas ya creadas.
+- No se recrean expedientes ni se alteran estados, fechas operativas, analista, DQO/Tenso, facturas, cobros ni demás datos de proceso.
+- Cada actualización descendente agrega historial SAMPLE_IDENTITY_PROPAGATED para conservar trazabilidad.
+- La muestra (SAMPLES) sigue siendo la identidad maestra; sampleId es la relación estable entre módulos.
