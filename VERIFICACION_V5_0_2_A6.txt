@@ -1,0 +1,20 @@
+PEP V5.0.2-A6 — RECEPCIÓN MÚLTIPLE + FLUJO ÚNICO DE ANÁLISIS
+
+CAMBIO 1 — RECEPCIÓN MÚLTIPLE
+- La fecha de recepción sigue opcional en el formulario inicial.
+- Registro de Análisis incorpora botón Selección múltiple.
+- Permite seleccionar varias filas visibles, seleccionar todas las visibles y aplicar una fecha de recepción común.
+- La operación NO cambia workflowStage: las muestras permanecen en ANALYSIS_REGISTRATION.
+- Cada cambio registra RECEPTION_DATE_ASSIGNED en workflow.history y auditRepository.
+
+CAMBIO 2 — TODA MUESTRA PASA POR REGISTRO DE ANÁLISIS
+- initialWorkflow deja todas las muestras nuevas en ANALYSIS_REGISTRATION.
+- Con DQO/Tenso: se conserva modal y validación actual.
+- Sin DQO/Tenso: botón Registrar análisis · continuar realiza confirmación directa sin exigir valores.
+- Después de confirmar, pasa a SAMPLE_REGISTRY / INGRESADA / CONTINUAR y queda elegible para Laboratorio.
+
+NO MODIFICADO
+- Lógica de En Espera/DETENIDA para muestras con análisis.
+- Elegibilidad de Laboratorio (requiere SAMPLE_REGISTRY + INGRESADA).
+- Dominios de Firebase/Live Sync y núcleo congelado de sincronización.
+- Históricos importados: no se remigran ni se altera su workflow existente.

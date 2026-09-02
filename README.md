@@ -47,3 +47,13 @@ Toda nueva funcionalidad debe implementarse fuera del núcleo congelado. Si una 
 - No elimina la muestra, no reinicia análisis, no modifica DQO/Tensoactivos, no cambia la etapa del workflow y no altera ingresos posteriores; únicamente corrige `decisionStatus`.
 - La muestra permanece en Registro de Muestras y aparece automáticamente en la bandeja **Detenidas**.
 - La autorización, la corrección y el motivo quedan en auditoría y en el historial del workflow.
+
+
+## V5.0.2-A6 — Recepción múltiple + paso universal por Registro de Análisis
+
+- Fecha de recepción continúa siendo opcional al registrar la muestra.
+- En Registro de Análisis se agregó selección múltiple para asignar una misma fecha de recepción a varias muestras sin moverlas de bandeja.
+- Toda muestra nueva pasa por Registro de Análisis, incluso cuando no requiere DQO/Tenso.
+- Las muestras sin DQO/Tenso continúan con un clic en `Registrar análisis · continuar`; luego migran al Registro de Muestras y quedan elegibles para Laboratorio.
+- Las muestras con DQO/Tenso conservan el flujo y validaciones existentes.
+- Los cambios de fecha de recepción generan historial de workflow y auditoría.

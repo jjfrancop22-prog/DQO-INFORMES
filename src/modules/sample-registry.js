@@ -19,9 +19,11 @@ function workflowBase(){return {recordStatus:'DRAFT',decisionStatus:'UNDECIDED',
 function historyEntry(action,from,to,userId,applied={}){return {id:uuid(),at:now(),userId,action,from,to,applied}}
 function initialWorkflow({requiresDqo,requiresSurfactants,userId}){
   const required=Boolean(requiresDqo||requiresSurfactants); const base=workflowBase();
-  const patch=required?{recordStatus:'PLANIFICADA',decisionStatus:'PENDING_ANALYSIS',analysisStatus:'REQUIRED',workflowStage:'ANALYSIS_REGISTRATION',requirements:{dqo:!!requiresDqo,surfactants:!!requiresSurfactants}}:{recordStatus:'INGRESADA',decisionStatus:'CONTINUAR',analysisStatus:'NOT_REQUIRED',workflowStage:'SAMPLE_REGISTRY',requirements:{dqo:false,surfactants:false}};
-  const action=required?'INITIAL_ANALYSIS_REQUIRED':'INITIAL_NO_ANALYSIS'; const at=now();
-  return {...base,...patch,history:[historyEntry(action,'UNASSIGNED',patch.workflowStage,userId,patch)],updatedAt:at,updatedBy:userId,closedAt:required?null:at};
+  // A6: toda muestra nueva pasa primero por Registro de Análisis. Si no requiere DQO/Tenso,
+  // el operador confirma con un solo clic y el flujo continúa sin solicitar valores.
+  const patch={recordStatus:'PLANIFICADA',decisionStatus:'PENDING_ANALYSIS',analysisStatus:required?'REQUIRED':'NOT_REQUIRED',workflowStage:'ANALYSIS_REGISTRATION',requirements:{dqo:!!requiresDqo,surfactants:!!requiresSurfactants}};
+  const action=required?'INITIAL_ANALYSIS_REQUIRED':'INITIAL_ANALYSIS_GATE_NO_TESTS'; const at=now();
+  return {...base,...patch,history:[historyEntry(action,'UNASSIGNED',patch.workflowStage,userId,patch)],updatedAt:at,updatedBy:userId,closedAt:null};
 }
 async function transition(id,patch,action,{userId='LOCAL_USER'}={}){
   const current=await repositories.samples.get(id); if(!current||current.deleted)throw new Error('La muestra no existe.');
@@ -117,6 +119,24 @@ export class SampleRegistryService{
     return saved;
   }
   async registerAnalysis(id,values,{userId='LOCAL_USER'}={}){const s=await repositories.samples.get(id);if(s?.workflow?.workflowStage!=='ANALYSIS_REGISTRATION')throw new Error('La muestra no está en Registro de Análisis.');const req=s.workflow.requirements||{};if(req.dqo&&!clean(values.dqo))throw new Error('El valor DQO es obligatorio.');if(req.surfactants&&!clean(values.surfactants))throw new Error('El valor de tensoactivos es obligatorio.');return transition(id,{recordStatus:'INGRESADA',decisionStatus:'CONTINUAR',analysisStatus:'COMPLETED',workflowStage:'SAMPLE_REGISTRY',analysisValues:{dqo:clean(values.dqo),surfactants:clean(values.surfactants),registeredAt:now(),registeredBy:userId}},'ANALYSIS_REGISTERED_CONTINUE',{userId})}
+  async updateReceptionDates(ids,date,{userId='LOCAL_USER'}={}){
+    const reception=clean(date);if(!/^\d{4}-\d{2}-\d{2}$/.test(reception))throw new Error('Seleccione una fecha de recepción válida.');
+    const unique=[...new Set((ids||[]).map(clean).filter(Boolean))];if(!unique.length)throw new Error('Seleccione al menos una muestra.');
+    const results=[];
+    for(const id of unique){
+      const current=await repositories.samples.get(id);if(!current||current.deleted)continue;
+      if(current.workflow?.workflowStage!=='ANALYSIS_REGISTRATION')throw new Error(`La muestra ${current.code||id} ya no está en Registro de Análisis.`);
+      const previousDate=clean(current.receivedDate);const at=now();
+      const previous=current.workflow||workflowBase();
+      const entry=historyEntry('RECEPTION_DATE_ASSIGNED','ANALYSIS_REGISTRATION','ANALYSIS_REGISTRATION',userId,{from:previousDate,to:reception});
+      const workflow={...previous,history:[...(previous.history||[]),entry],updatedAt:at,updatedBy:userId};
+      const saved=await repositories.samples.update(id,{receivedDate:reception,workflow},{userId});
+      await auditRepository.record({action:'RECEPTION_DATE_ASSIGNED',domain:'SAMPLES',entityId:id,entityType:'SAMPLE',userId,before:{receivedDate:previousDate},after:{receivedDate:reception},metadata:{workflowStagePreserved:'ANALYSIS_REGISTRATION',bulk:unique.length>1}});
+      results.push(saved);
+    }
+    eventBus.emit('samples.reception-date.assigned',{ids:results.map(x=>x.id),receivedDate:reception,userId});
+    return results;
+  }
   async sendToWaiting(id,values,{userId='LOCAL_USER'}={}){const s=await repositories.samples.get(id);if(s?.workflow?.workflowStage!=='ANALYSIS_REGISTRATION')throw new Error('La muestra no está en Registro de Análisis.');return transition(id,{recordStatus:'PLANIFICADA',decisionStatus:'PENDIENTE',analysisStatus:'WAITING_DECISION',workflowStage:'WAITING',analysisValues:{dqo:clean(values.dqo),surfactants:clean(values.surfactants),registeredAt:now(),registeredBy:userId}},'ANALYSIS_SENT_TO_WAITING',{userId})}
   async continueWaiting(id,reason,{userId='LOCAL_USER'}={}){return transition(id,{recordStatus:'INGRESADA',decisionStatus:'CONTINUAR',analysisStatus:'CLOSED',workflowStage:'SAMPLE_REGISTRY',waitingDecision:{decision:'CONTINUAR',reason:clean(reason),decidedAt:now(),decidedBy:userId}},'WAITING_CONTINUE',{userId})}
   async stopWaiting(id,reason,{userId='LOCAL_USER'}={}){return transition(id,{recordStatus:'INGRESADA',decisionStatus:'DETENIDA',analysisStatus:'CLOSED',workflowStage:'SAMPLE_REGISTRY',waitingDecision:{decision:'DETENIDA',reason:clean(reason),decidedAt:now(),decidedBy:userId}},'WAITING_STOPPED',{userId})}
