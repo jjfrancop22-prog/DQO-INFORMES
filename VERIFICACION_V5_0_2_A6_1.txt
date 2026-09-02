@@ -1,0 +1,10 @@
+PEP V5.0.2-A6.1 — LOGIN FIX
+Fecha: 2026-09-02
+
+Corrección puntual:
+- Restaurado src/core/version-metadata.js completo.
+- Se recuperan exports requeridos por repositorios, Sync, Cloud Bootstrap y Global Sync Health.
+- El defecto de A6 impedía cargar app.js; el formulario Enterprise Login quedaba sin su listener JS y al enviar se recargaba la página.
+- Se conserva íntegramente la funcionalidad A6: recepción múltiple y paso universal por Registro de Análisis.
+- Cache Service Worker incrementado para forzar actualización del cliente.
+- No se modifican Firebase config, Auth Provider, Session Manager, reglas de roles ni Frozen Sync Core.
