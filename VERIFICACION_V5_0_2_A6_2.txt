@@ -1,0 +1,9 @@
+PEP V5.0.2-A6.2 — FACTURACIÓN POR BORRADORES
+
+Cambio controlado:
+- Los campos administrativos de Facturación se conservan como borrador local en memoria mientras se busca/filtra otra muestra.
+- Es posible editar 2103, buscar 1960, editarla y continuar con otras sin guardar entre cada una.
+- El botón superior ahora es Guardar cambios (N) y guarda únicamente los registros modificados.
+- El botón Guardar de cada fila se conserva para guardado individual.
+- Al guardar se utiliza billingService.save(), preservando auditoría, Outbox, Firebase y lógica existente.
+- No se modificó el núcleo de sincronización congelado.

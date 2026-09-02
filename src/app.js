@@ -336,7 +336,7 @@ const startupManager=new StartupManager({
   onReady:async status=>{
     window.pepEnterpriseSessionGate=startupManager.sessionGate;
     window.pepStartupManager=startupManager;
-    if(status.sessionUnlocked)toast('PEP V5.0.2-A6.1 listo · Recepción múltiple + flujo único por Registro de Análisis · Login Fix');
+    if(status.sessionUnlocked)toast('PEP V5.0.2-A6.3 listo · Facturación con borradores y guardado general');
   },
   onError:async error=>{
     if($('dbStatus'))$('dbStatus').textContent='ERROR';

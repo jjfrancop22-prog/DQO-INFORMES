@@ -1,5 +1,5 @@
-export const APP_VERSION='V5.0.2-A6.1';
-export const APP_BUILD='RECEPCION_MULTIPLE_FLUJO_ANALISIS_LOGIN_FIX';
+export const APP_VERSION='V5.0.2-A6.3';
+export const APP_BUILD='FACTURACION_EDICION_CONTROLADA_FACTURADO';
 export const SYNC_PROTOCOL_VERSION=1;
 export const ENTITY_SYNC_SCHEMA_VERSION=1;
 export const CONFLICT_SCHEMA_VERSION=2;
@@ -7,7 +7,7 @@ export const SECURITY_SCHEMA_VERSION=1;
 export const CLOUD_PROVIDER='FIREBASE_FIRESTORE';
 export const CLOUD_MODE='MULTI_PC_ENTERPRISE_FROZEN_SYNC_CORE_7_DOMAIN_LIVE_SYNC';
 export const APP_VERSION_LABEL=`PEP ${APP_VERSION}`;
-export const APP_BUILD_LABEL='Multi-PC Enterprise · Recepción múltiple + flujo universal por Registro de Análisis · Login Fix';
+export const APP_BUILD_LABEL='Multi-PC Enterprise · Facturación con edición controlada de registros FACTURADOS';
 export const APP_RELEASED_AT='2026-09-02';
 export const SYNC_CORE_FROZEN=true;
 export const SYNC_CORE_FREEZE_BASE='V5.0.0-A1.2';

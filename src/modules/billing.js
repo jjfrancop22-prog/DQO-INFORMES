@@ -59,8 +59,9 @@ class BillingService{
       for(const [,list] of groups){if(list.length<2)continue;list.sort((a,b)=>rank(b)-rank(a)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||''))||String(a.id).localeCompare(String(b.id)));const keep=list[0];for(const dup of list.slice(1)){await repositories.billing.softDelete(dup.id,{userId,sync:true});fixed++}}return {fixed};})();
     try{return await this._reconcilePromise}finally{this._reconcilePromise=null}
   }
-  async save(id,data,{userId='LOCAL_USER'}={}){
+  async save(id,data,{userId='LOCAL_USER',controlledCorrection=false}={}){
     const rec=await repositories.billing.get(id);if(!rec)throw new Error('Registro de facturación no encontrado.');
+    if(rec.billingStatus==='FACTURADO'&&!controlledCorrection)throw new Error('Este registro ya está FACTURADO. Use “Modificar facturado” e ingrese la contraseña de autorización.');
     const status=clean(data.billingStatus)||'PENDIENTE';
     if(!BILLING_STATUSES.includes(status))throw new Error('Estado de facturación no válido.');
     const subtotal=Number(data.subtotal||0);
@@ -68,7 +69,7 @@ class BillingService{
     const patch={
       quotation:clean(data.quotation),invoice:clean(data.invoice),invoiceDate:clean(data.invoiceDate),
       subtotal,billingStatus:status,billingObservation:clean(data.billingObservation),billingUpdatedAt:nowIso(),
-      history:history(rec,'BILLING_UPDATED',userId,`${status}${clean(data.invoice)?' · Factura: '+clean(data.invoice):''}${subtotal?' · Subtotal: $'+subtotal.toFixed(2):''}${clean(data.billingObservation)?' · Obs.: '+clean(data.billingObservation):''}`)
+      history:history(rec,rec.billingStatus==='FACTURADO'&&controlledCorrection?'BILLING_FACTURADO_CORRECTED':'BILLING_UPDATED',userId,`${rec.billingStatus==='FACTURADO'&&controlledCorrection?'CORRECCIÓN AUTORIZADA · ':''}${status}${clean(data.invoice)?' · Factura: '+clean(data.invoice):''}${subtotal?' · Subtotal: $'+subtotal.toFixed(2):''}${clean(data.billingObservation)?' · Obs.: '+clean(data.billingObservation):''}`)
     };
     const after=await repositories.billing.update(id,patch,{userId});
     eventBus.emit('billing.updated',{billingId:id,sampleId:after.sampleId,status});

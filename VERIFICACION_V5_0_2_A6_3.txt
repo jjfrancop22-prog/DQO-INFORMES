@@ -1,0 +1,9 @@
+PEP V5.0.2-A6.3 — EDICIÓN CONTROLADA DE FACTURADOS
+
+- Registros PENDIENTE / EN ESPERA / FACTURA PARCIAL / NO FACTURAR continúan editables normalmente.
+- Un registro ya guardado como FACTURADO queda bloqueado para edición accidental.
+- Botón “Modificar facturado” solicita contraseña de autorización 2026.
+- Autorización y rechazo se registran en auditoría BILLING.
+- La corrección guardada agrega BILLING_FACTURADO_CORRECTED al historial del registro.
+- Se mantiene A6.2: borradores multi-registro y Guardar cambios (N).
+- No se modifica Frozen Sync Core ni configuración Firebase.
