@@ -52,6 +52,8 @@ export class PermissionUIEnforcer{
   }
   isMutation(el){
     if(!el)return false;
+    // A6.5: la navegación nunca debe bloquearse por el guard de mutaciones.
+    if(el.closest?.('.tab,.module-tab'))return false;
     if(el.matches?.('form#sampleForm'))return true;
     if(el.closest?.('[data-safe-delete-sample],[data-edit],[data-analysis],[data-waiting],[data-lab-save-analyst],[data-lab-open]'))return true;
     const btn=el.closest?.('button,input[type="submit"]');if(!btn)return false;

@@ -1,0 +1,8 @@
+PEP V5.0.2-A6.6 — ORDENAMIENTO DE CÓDIGO VISIBLE
+
+MEJORA APLICADA
+- El orden ascendente/descendente de la columna Código usa exclusivamente el código operativo visible (ej. 500, 1840, 2041, 1551-3).
+- El UUID/ID interno mostrado debajo del código ya no participa en el ordenamiento.
+- Se mantienen sin cambios los filtros, navegación, permisos y trazabilidad.
+- Ordenamiento natural numérico: 500 < 1551-3 < 1840 < 2041 según el valor visible.
+- Cache PWA incrementado a v502a66.

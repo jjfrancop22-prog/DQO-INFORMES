@@ -1,0 +1,16 @@
+PEP V5.0.2-A6.7 — REINGRESO DE SESIÓN CON SINCRONIZACIÓN PREVIA
+
+CAMBIO PUNTUAL
+- Al volver a iniciar sesión después de cerrar sesión, el ERP ya no libera inmediatamente la interfaz con datos que pudieran quedar en memoria visual.
+- Mantiene la compuerta de acceso mostrando “Sincronizando…” mientras restaura Live Sync.
+- restoreConfigured() realiza el pull autorizado desde Firebase por dominio.
+- Después del pull se ejecuta refresh({syncDerived:false}) para reconstruir tablas, contadores y vistas desde IndexedDB actualizado.
+- Luego aplica nuevamente permisos y recién entonces abre la interfaz.
+
+SE CONSERVA
+- Sincronización inmediata cuando la sesión ya está abierta.
+- Sincronización correcta en el primer inicio.
+- Roles/permisos, trazabilidad, Facturación solo lectura y ordenamiento por código visible de A6.6.
+
+PWA
+- Cache incrementado a pep-enterprise-static-v502a67.

@@ -1,5 +1,5 @@
-export const APP_VERSION='V5.0.2-A6.4';
-export const APP_BUILD='FACTURACION_LECTURA_ANALISIS_ESPERA_DETENIDAS';
+export const APP_VERSION='V5.0.2-A6.7';
+export const APP_BUILD='FACTURACION_NAVEGACION_LECTURA_MONITOREO';
 export const SYNC_PROTOCOL_VERSION=1;
 export const ENTITY_SYNC_SCHEMA_VERSION=1;
 export const CONFLICT_SCHEMA_VERSION=2;
@@ -7,7 +7,7 @@ export const SECURITY_SCHEMA_VERSION=1;
 export const CLOUD_PROVIDER='FIREBASE_FIRESTORE';
 export const CLOUD_MODE='MULTI_PC_ENTERPRISE_FROZEN_SYNC_CORE_7_DOMAIN_LIVE_SYNC';
 export const APP_VERSION_LABEL=`PEP ${APP_VERSION}`;
-export const APP_BUILD_LABEL='Multi-PC Enterprise · Facturación con lectura de Análisis, En Espera y Detenidas';
+export const APP_BUILD_LABEL='Multi-PC Enterprise · Facturación con navegación de solo lectura en Monitoreo';
 export const APP_RELEASED_AT='2026-09-03';
 export const SYNC_CORE_FROZEN=true;
 export const SYNC_CORE_FREEZE_BASE='V5.0.0-A1.2';

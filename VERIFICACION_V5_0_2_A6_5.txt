@@ -1,0 +1,16 @@
+PEP V5.0.2-A6.5 — FACTURACIÓN: NAVEGACIÓN REAL EN MONITOREO
+
+CORRECCIÓN
+- FACTURACION puede abrir efectivamente Registro de Muestras, Registro de Análisis, En Espera y Detenidas.
+- Las pestañas de navegación quedan excluidas explícitamente del guard de mutaciones.
+- Se añade bypass controlado de navegación solo para FACTURACION en esas cuatro vistas de Monitoreo.
+- En FACTURACION, las tablas de Monitoreo muestran solo la acción Historial; no se muestran Editar, Resolver, Registrar análisis, Corregir a DETENIDA ni Eliminar.
+- No se concede samples.write y no se modifica el workflow ni la sincronización.
+- Caché PWA actualizado a v502a65.
+
+PRUEBA
+1. Iniciar sesión con rol FACTURACION.
+2. Entrar a MONITOREO.
+3. Abrir Registro de Análisis, En Espera y Detenidas.
+4. Confirmar que cambia el contenido central y se muestran las tablas correspondientes.
+5. Confirmar que únicamente Historial queda disponible como acción.

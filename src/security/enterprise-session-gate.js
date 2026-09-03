@@ -52,9 +52,23 @@ export class EnterpriseSessionGate{
   async unlock({restoreLive=true,announce=false,preserveMarker=false}={}){
     const s=this.sessions().current();if(!this.roleIsValid(s)){await this.lock('Acceso denegado: rol no válido.');return false}
     this.unlocked=true;if(!preserveMarker)this.sessions().beginEnterpriseSession(s);else this.sessions().enterpriseActive=true;
-    document.body.classList.remove('enterprise-locked');document.body.classList.add('enterprise-authenticated');$('enterpriseLoginGate')?.classList.remove('show');this.renderSessionMeta();
-    if(this.onAuthenticated)await this.onAuthenticated({restoreLive});else if(restoreLive&&this.live)await this.live.restoreConfigured().catch(e=>this.toast(`Live Sync: ${e.message||e}`,true));
-    if(announce)this.toast(`Bienvenido · ${s.displayName||s.email} · ${s.role}`);return true;
+
+    // V5.0.2-A6.7 — mantener la compuerta visible durante el pull de reingreso.
+    // Así el usuario no entra a tablas antiguas mientras Firebase/IndexedDB se
+    // están poniendo al día después de haber cerrado sesión.
+    const gate=$('enterpriseLoginGate'),btn=$('enterpriseLoginSubmit'),error=$('enterpriseLoginError');
+    document.body.classList.add('enterprise-locked');document.body.classList.remove('enterprise-authenticated');
+    gate?.classList.add('show');this.renderSessionMeta();
+    if(btn){btn.disabled=true;btn.textContent='Sincronizando…'}
+    if(error){error.textContent='Sincronizando datos de la sesión…';error.style.display='block'}
+    try{
+      if(this.onAuthenticated)await this.onAuthenticated({restoreLive});
+      else if(restoreLive&&this.live)await this.live.restoreConfigured().catch(e=>this.toast(`Live Sync: ${e.message||e}`,true));
+      document.body.classList.remove('enterprise-locked');document.body.classList.add('enterprise-authenticated');gate?.classList.remove('show');this.error('');
+      if(announce)this.toast(`Bienvenido · ${s.displayName||s.email} · ${s.role}`);return true;
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='Iniciar sesión'}
+    }
   }
   async lock(message='Sesión requerida.'){
     this.unlocked=false;if(this.onLocked)await this.onLocked().catch(()=>{});document.body.classList.add('enterprise-locked');document.body.classList.remove('enterprise-authenticated');
