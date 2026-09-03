@@ -1,0 +1,17 @@
+PEP V5.0.2-A6.4 — FACTURACIÓN: LECTURA OPERATIVA AMPLIADA
+
+CAMBIO APLICADO
+- El rol FACTURACION puede visualizar, en modo SOLO LECTURA, las vistas:
+  1. Registro de Análisis
+  2. En Espera
+  3. Detenidas
+- Se conserva Registro de Muestras visible como antes.
+- Nuevas Muestras, Catálogos e Importar Excel continúan restringidos para FACTURACION.
+- No se concede SAMPLES_WRITE al rol FACTURACION: botones/acciones de modificación permanecen bloqueados por el motor de permisos.
+- No se modifica la lógica, estados, datos ni sincronización de las muestras.
+
+PRUEBA RECOMENDADA
+1. Iniciar sesión con Michelle Vera / rol FACTURACION.
+2. Entrar a MONITOREO.
+3. Confirmar que aparecen Registro de Muestras, Registro de Análisis, En Espera y Detenidas.
+4. Abrir las tres vistas nuevas y comprobar que permiten consultar/buscar/ver historial, pero no registrar, continuar, detener ni modificar muestras.

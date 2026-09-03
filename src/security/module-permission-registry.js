@@ -7,9 +7,9 @@ export const MODULE_PERMISSION_MANIFEST=Object.freeze({
   monitoring:{id:'monitoring',label:'Monitoreo',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE,views:{
     register:{label:'Nuevas Muestras',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']},
     registry:{label:'Registro de Muestras',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
-    analysis:{label:'Registro de Análisis',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']},
-    waiting:{label:'En Espera',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']},
-    stopped:{label:'Detenidas',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']},
+    analysis:{label:'Registro de Análisis',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
+    waiting:{label:'En Espera',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
+    stopped:{label:'Detenidas',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
     catalogs:{label:'Catálogos',readAny:[P.CLIENTS_READ,P.CATALOGS_READ],writeAny:[P.CLIENTS_WRITE,P.CATALOGS_WRITE],denyRoles:['FACTURACION']},
     import:{label:'Importar Excel',read:P.SAMPLES_WRITE,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']}
   }},
