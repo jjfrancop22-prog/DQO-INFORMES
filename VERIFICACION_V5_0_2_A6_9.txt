@@ -1,0 +1,12 @@
+PEP V5.0.2-A6.9
+Fecha: 2026-09-04
+
+CAMBIOS
+1. Acceso financiero deja de usar contraseña local/IndexedDB.
+2. Facturación y Cuentas por Cobrar solicitan revalidación de la contraseña del usuario autenticado en Firebase Authentication.
+3. La contraseña no queda escrita en el código, localStorage ni IndexedDB.
+4. Rol ADMINISTRADOR puede abrir Facturación en modo SOLO LECTURA.
+5. ADMINISTRADOR no puede guardar, editar, desbloquear facturados ni eliminar desde Facturación.
+6. Para ADMINISTRADOR el valor monetario Subtotal se muestra como OCULTO.
+7. Rol FACTURACION conserva su edición normal, borradores, paginación de 100 y Guardar cambios general.
+8. Núcleo Live Sync de 7 dominios no fue modificado.
