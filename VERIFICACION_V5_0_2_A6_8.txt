@@ -1,0 +1,18 @@
+PEP V5.0.2-A6.8 — OPTIMIZACIÓN DE RENDIMIENTO EN FACTURACIÓN
+
+Problema corregido:
+- Facturación intentaba crear en el DOM los ~2400 registros completos (inputs, selects y textareas).
+- Cada tecla del buscador reconstruía toda la tabla, provocando retraso, clicks que parecían no responder y lentitud mayor en PCs menos potentes.
+
+Cambio aplicado únicamente a la interfaz de Facturación:
+1. La búsqueda y filtros siguen evaluando TODOS los registros.
+2. Solo se renderizan 100 registros por página.
+3. Se agregan botones Anterior / Siguiente e indicador de página.
+4. El buscador usa debounce de 180 ms para no reconstruir la tabla por cada pulsación inmediata.
+5. Los borradores/cambios pendientes se mantienen al cambiar de página o filtrar.
+6. Guardar cambios continúa guardando todos los registros editados de la sesión, aunque estén en otra página.
+7. No se modificó el núcleo de sincronización Firebase/IndexedDB ni la trazabilidad.
+
+Resultado esperado:
+- Apertura y escritura mucho más fluida en Facturación.
+- Los 2400+ registros siguen disponibles mediante búsqueda/filtros/paginación sin cargarlos todos visualmente a la vez.

@@ -282,7 +282,7 @@ eventBus.on('sync:ack',()=>refreshOutboxIndicator());
 async function initializeAuthenticatedERP({alreadyInitialized=false}={}){
   const perfToken=performanceCoordinator.start(alreadyInitialized?'runtime:restore':'runtime:first-auth');
   if(alreadyInitialized){
-    // V5.0.2-A6.7 — Reingreso de sesión: restaurar listeners, hacer pull y
+    // V5.0.2-A6.8 — Reingreso de sesión: restaurar listeners, hacer pull y
     // REPINTAR la UI antes de liberar la pantalla. El pull inicial de
     // restoreConfigured() actualiza IndexedDB, pero por sí solo no obliga a
     // reconstruir las tablas que quedaron visibles antes del cierre de sesión.
@@ -349,7 +349,7 @@ const startupManager=new StartupManager({
   onReady:async status=>{
     window.pepEnterpriseSessionGate=startupManager.sessionGate;
     window.pepStartupManager=startupManager;
-    if(status.sessionUnlocked)toast('PEP V5.0.2-A6.7 listo · Reingreso sincronizado antes de abrir');
+    if(status.sessionUnlocked)toast('PEP V5.0.2-A6.8 listo · Reingreso sincronizado antes de abrir');
   },
   onError:async error=>{
     if($('dbStatus'))$('dbStatus').textContent='ERROR';
