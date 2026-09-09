@@ -1,0 +1,23 @@
+PEP V5.0.2-A7.0.1 DEV — LOGIN CORREGIDO / PLANIFICADOR INTELIGENTE
+Fecha: 2026-09-08
+
+BASE:
+- Reconstruida directamente desde PEP V5.0.2-A6.9 de producción.
+- Firebase Auth conservado desde A6.9.
+- Startup Manager conservado desde A6.9.
+- Enterprise Session Gate conservado desde A6.9.
+- Firebase config / adapter / Live Sync no modificados.
+
+CAMBIOS DEV:
+- Catálogo: planes de monitoreo por sucursal/servicio/frecuencia.
+- Períodos: mensual, bimestral, trimestral, cuatrimestral, semestral y anual.
+- Nueva muestra: sugerencia de períodos pendientes.
+- Planificador Inteligente mensual.
+- Matriz anual con ✅ + código de muestra.
+- localhost: Service Worker deshabilitado y cachés PEP eliminadas para impedir mezcla de versiones durante desarrollo.
+- Producción: comportamiento PWA normal se conserva cuando no es localhost.
+
+PRUEBA LOCAL:
+python3 -m http.server 8080
+Abrir: http://localhost:8080
+Realizar una recarga forzada la primera vez: Cmd+Shift+R
