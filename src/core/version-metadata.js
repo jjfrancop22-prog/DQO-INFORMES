@@ -1,5 +1,5 @@
-export const APP_VERSION='V5.0.2-A7.0.1 DEV';
-export const APP_BUILD='PLANIFICADOR_INTELIGENTE_LOGIN_BASE_A6_9';
+export const APP_VERSION='V5.0.2-A6.9';
+export const APP_BUILD='FACTURACION_FIREBASE_AUTH_ADMIN_READONLY';
 export const SYNC_PROTOCOL_VERSION=1;
 export const ENTITY_SYNC_SCHEMA_VERSION=1;
 export const CONFLICT_SCHEMA_VERSION=2;
@@ -7,15 +7,23 @@ export const SECURITY_SCHEMA_VERSION=1;
 export const CLOUD_PROVIDER='FIREBASE_FIRESTORE';
 export const CLOUD_MODE='MULTI_PC_ENTERPRISE_FROZEN_SYNC_CORE_7_DOMAIN_LIVE_SYNC';
 export const APP_VERSION_LABEL=`PEP ${APP_VERSION}`;
-export const APP_BUILD_LABEL='DEV · Planificador inteligente · Login heredado exactamente de A6.9';
-export const APP_RELEASED_AT='2026-09-08';
+export const APP_BUILD_LABEL='Multi-PC Enterprise · Facturación protegida por Firebase · Administrador solo lectura';
+export const APP_RELEASED_AT='2026-09-04';
 export const SYNC_CORE_FROZEN=true;
 export const SYNC_CORE_FREEZE_BASE='V5.0.0-A1.2';
 export const VERSION_METADATA=Object.freeze({
-  appVersion:APP_VERSION,version:APP_VERSION,build:APP_BUILD,
-  syncProtocolVersion:SYNC_PROTOCOL_VERSION,entitySyncSchemaVersion:ENTITY_SYNC_SCHEMA_VERSION,
-  conflictSchemaVersion:CONFLICT_SCHEMA_VERSION,securitySchemaVersion:SECURITY_SCHEMA_VERSION,
-  cloudProvider:CLOUD_PROVIDER,cloudMode:CLOUD_MODE,label:APP_VERSION_LABEL,
-  buildLabel:APP_BUILD_LABEL,releasedAt:APP_RELEASED_AT,
-  syncCoreFrozen:SYNC_CORE_FROZEN,syncCoreFreezeBase:SYNC_CORE_FREEZE_BASE
+  appVersion:APP_VERSION,
+  version:APP_VERSION,
+  build:APP_BUILD,
+  syncProtocolVersion:SYNC_PROTOCOL_VERSION,
+  entitySyncSchemaVersion:ENTITY_SYNC_SCHEMA_VERSION,
+  conflictSchemaVersion:CONFLICT_SCHEMA_VERSION,
+  securitySchemaVersion:SECURITY_SCHEMA_VERSION,
+  cloudProvider:CLOUD_PROVIDER,
+  cloudMode:CLOUD_MODE,
+  label:APP_VERSION_LABEL,
+  buildLabel:APP_BUILD_LABEL,
+  releasedAt:APP_RELEASED_AT,
+  syncCoreFrozen:SYNC_CORE_FROZEN,
+  syncCoreFreezeBase:SYNC_CORE_FREEZE_BASE
 });

@@ -15,19 +15,6 @@ const DEFAULT_MATRICES=[
   {name:'LODOS CRETIB',label:'LODOS CRETIB',groupId:'SUELOS',codeFamily:'SUELO'}
 ];
 
-
-const VALID_FREQUENCIES=['MENSUAL','BIMESTRAL','TRIMESTRAL','CUATRIMESTRAL','SEMESTRAL','ANUAL'];
-function normalizeMonitoringPlans(rows=[]){
-  return (rows||[]).map((p,i)=>({
-    id:clean(p.id)||`PLAN-${Date.now()}-${i}`,
-    branch:upper(p.branch),
-    service:upper(p.service||'MONITOREO'),
-    frequency:upper(p.frequency),
-    deadlineDay:Math.min(31,Math.max(1,Number(p.deadlineDay)||30)),
-    active:p.active!==false
-  })).filter(p=>p.branch&&VALID_FREQUENCIES.includes(p.frequency));
-}
-
 function workflowBase(){return {recordStatus:'DRAFT',decisionStatus:'UNDECIDED',analysisStatus:'NOT_EVALUATED',workflowStage:'UNASSIGNED',requirements:{dqo:false,surfactants:false},analysisValues:{dqo:'',surfactants:''},waitingDecision:null,history:[],closedAt:null,updatedAt:null,updatedBy:null}}
 function historyEntry(action,from,to,userId,applied={}){return {id:uuid(),at:now(),userId,action,from,to,applied}}
 function initialWorkflow({requiresDqo,requiresSurfactants,userId}){
@@ -91,10 +78,9 @@ export class SampleRegistryService{
     const name=upper(input.name); if(!name)throw new Error('El nombre del cliente es obligatorio.');
     const branches=[...new Set((input.branches||[]).map(upper).filter(Boolean))]; const all=await repositories.clients.all();
     const duplicate=all.find(x=>upper(x.name)===name&&x.id!==input.id); if(duplicate)throw new Error('Ya existe un cliente con ese nombre.');
-    const monitoringPlans=normalizeMonitoringPlans(input.monitoringPlans);
-    if(!input.id)return repositories.clients.create({name,identification:clean(input.identification),branches,monitoringPlans},{userId});
+    if(!input.id)return repositories.clients.create({name,identification:clean(input.identification),branches},{userId});
     const before=await repositories.clients.get(input.id); if(!before)throw new Error('Cliente no encontrado.');
-    const saved=await repositories.clients.update(input.id,{name,identification:clean(input.identification),branches,monitoringPlans},{userId});
+    const saved=await repositories.clients.update(input.id,{name,identification:clean(input.identification),branches},{userId});
     if(upper(before.name)!==name){
       const samples=await repositories.samples.all();
       for(const sampleBefore of samples.filter(x=>x.clientCatalogId===input.id)){
@@ -121,14 +107,25 @@ export class SampleRegistryService{
     if(!code)throw new Error('El código es obligatorio.');if(!Number.isInteger(year)||year<2000||year>2100)throw new Error('El año debe estar entre 2000 y 2100.');if(!clientName)throw new Error('El cliente es obligatorio.');if(!clean(input.samplingDate))throw new Error('La fecha de muestra es obligatoria.');
     const codeFull=`${code}-${year}`;const existing=await repositories.samples.all();if(existing.some(x=>upper(x.codeFull)===codeFull&&x.groupId===matrix.groupId))throw new Error(`Ya existe la muestra ${codeFull} en el grupo ${matrix.groupId}.`);
     const client=await upsertClient(clientName,branch,userId);const workflow=initialWorkflow({requiresDqo:!!input.requiresDqo,requiresSurfactants:!!input.requiresSurfactants,userId});
-    const sample=await repositories.samples.create({schemaVersion:2,code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch,matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),monitoringPlanId:clean(input.monitoringPlanId),monitoringPeriodKey:clean(input.monitoringPeriodKey),monitoringService:upper(input.monitoringService),status:workflow.recordStatus,observations:clean(input.observations),workflow,metadata:{source:'SAMPLE_REGISTRY_V3_1_0'}},{userId});
+    const sample=await repositories.samples.create({schemaVersion:2,code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch,matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),status:workflow.recordStatus,observations:clean(input.observations),workflow,metadata:{source:'SAMPLE_REGISTRY_V3_1_0'}},{userId});
     eventBus.emit('sample.registration.completed',{id:sample.id,codeFull:sample.codeFull,workflow:sample.workflow});return sample;
   }
-  async updateRegistry(id,input,{userId='LOCAL_USER'}={}){
+  async updateRegistry(id,input,{userId='LOCAL_USER',allowRequirementChange=false}={}){
     const current=await repositories.samples.get(id);if(!current)throw new Error('Muestra no encontrada.');const matrix=await this.matrixById(input.matrixCatalogId||input.matrixId);const code=upper(input.code),year=Number(input.year);if(!code)throw new Error('El código es obligatorio.');if(!Number.isInteger(year)||year<2000||year>2100)throw new Error('El año debe estar entre 2000 y 2100.');if(!clean(input.samplingDate))throw new Error('La fecha de muestra es obligatoria.');
     const codeFull=`${code}-${year}`;const all=await repositories.samples.all();if(all.some(x=>x.id!==id&&upper(x.codeFull)===codeFull&&x.groupId===matrix.groupId))throw new Error(`Ya existe la muestra ${codeFull} en el grupo ${matrix.groupId}.`);
     const client=await upsertClient(input.client,input.branch,userId);
-    const saved=await repositories.samples.update(id,{code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch:upper(input.branch),matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),monitoringPlanId:clean(input.monitoringPlanId),monitoringPeriodKey:clean(input.monitoringPeriodKey),monitoringService:upper(input.monitoringService),observations:clean(input.observations)},{userId});
+    const oldReq=current.workflow?.requirements||{};const beforeSpecial=!!(oldReq.dqo||oldReq.surfactants);const afterSpecial=!!(input.requiresDqo||input.requiresSurfactants);
+    if(beforeSpecial!==afterSpecial&&!allowRequirementChange)throw new Error('El cambio CON/SIN DQO-Tenso requiere autorización de Calidad.');
+    let workflow=current.workflow||workflowBase();let status=current.status;
+    if(beforeSpecial!==afterSpecial){
+      const at=now();const from=workflow.workflowStage||'UNASSIGNED';let patch={requirements:{dqo:afterSpecial,surfactants:afterSpecial},updatedAt:at,updatedBy:userId};
+      if(afterSpecial&&from!=='ANALYSIS_REGISTRATION'){patch={...patch,recordStatus:'PLANIFICADA',decisionStatus:'PENDING_ANALYSIS',analysisStatus:'REQUIRED',workflowStage:'ANALYSIS_REGISTRATION',closedAt:null};status='PLANIFICADA'}
+      else if(from==='ANALYSIS_REGISTRATION'){patch={...patch,decisionStatus:'PENDING_ANALYSIS',analysisStatus:afterSpecial?'REQUIRED':'NOT_REQUIRED',recordStatus:'PLANIFICADA'};status='PLANIFICADA'}
+      const entry=historyEntry('SPECIAL_ANALYSIS_REQUIREMENT_CORRECTED',from,patch.workflowStage||from,userId,{from:beforeSpecial?'CON_DQO_TENSO':'SIN_DQO_TENSO',to:afterSpecial?'CON_DQO_TENSO':'SIN_DQO_TENSO'});
+      workflow={...workflow,...patch,history:[...(workflow.history||[]),entry]};
+      await auditRepository.record({action:'SPECIAL_ANALYSIS_REQUIREMENT_CORRECTED',domain:'SAMPLES',entityId:id,entityType:'SAMPLE',userId,before:{requiresDqo:!!oldReq.dqo,requiresSurfactants:!!oldReq.surfactants,workflowStage:current.workflow?.workflowStage},after:{requiresDqo:afterSpecial,requiresSurfactants:afterSpecial,workflowStage:workflow.workflowStage},metadata:{policy:'QUALITY_PASSWORD_REQUIRED'}}).catch(()=>{});
+    }
+    const saved=await repositories.samples.update(id,{code,year,codeFull,clientId:client.name,clientCatalogId:client.id,branch:upper(input.branch),matrixId:matrix.name,matrixCatalogId:matrix.id,groupId:matrix.groupId,codeFamily:matrix.codeFamily,samplingDate:clean(input.samplingDate),receivedDate:clean(input.receivedDate),monthFrequency:clean(input.monthFrequency),observations:clean(input.observations),workflow,status},{userId});
     await propagateSampleIdentity(saved,current,{userId,reason:'Edición controlada de Registro de Muestras'});
     return saved;
   }

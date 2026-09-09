@@ -2,6 +2,7 @@ import {reportsService,AUTHORIZATION_LABELS,isAuthorizationHold} from './reports
 import {repositories} from '../data/repositories.js';
 import {visibleForActiveSamples} from '../data/tombstone.js';
 import {refreshEnterpriseTableTools} from '../core/enterprise-table-tools.js';
+import {businessDaysBetween,calculateSlaDeadline} from '../core/business-calendar.js';
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -21,7 +22,7 @@ function toast(msg,error=false){
 function searchMatch(r,q){return !q||[r.code,r.codeFull,r.clientId,r.branch,r.matrixId,r.groupId,r.analyst,r.serviceType].join(' ').toLowerCase().includes(q)}
 function stageLabel(r){return ({PENDING_DELIVERY:'INFORME PENDIENTE',AUTHORIZATION:'AUTORIZACIÓN',PORTAL_PENDING:'PORTAL PENDIENTE',PORTAL_SENT:'PORTAL ENVIADO'})[r.reportStatus]||r.reportStatus||'—'}
 function authLabel(v){return AUTHORIZATION_LABELS[String(v||'')]||'—'}
-function daysUntil(v){if(!v)return null;const a=new Date(`${v}T12:00:00`),b=new Date();b.setHours(12,0,0,0);return Math.ceil((a-b)/86400000)}
+function daysUntil(v){if(!v)return null;return businessDaysBetween(new Date().toISOString().slice(0,10),v)}
 function slaBadge(r){const n=daysUntil(r.maxReportDate);if(n===null)return '<span class="badge">—</span>';if(n<0)return `<span class="badge red">VENCIDO · ${Math.abs(n)} día(s)</span>`;return `<span class="badge green">EN PLAZO · ${n} día(s)</span>`}
 function checked(set,id){return set.has(id)?'checked':''}
 function authOptions(current=''){return `<option value="">Seleccione...</option>${Object.entries(AUTHORIZATION_LABELS).map(([k,v])=>`<option value="${k}" ${String(current)===k?'selected':''}>${esc(v)}</option>`).join('')}`}
@@ -108,7 +109,7 @@ function exportPortalDate(){exportByDate('portalSentDate','reportsPortalFrom','r
 
 
 const api={
-  async refresh({syncDerived=true}={}){if(syncDerived){await reportsService.reconcileDuplicates();await reportsService.ensureFromLaboratory();await reportsService.reconcileAuthorizationHolds();}const [reportRows,samples]=await Promise.all([reportsService.all(),repositories.samples.all()]);const activeSampleIds=new Set(samples.map(x=>x.id));rows=visibleForActiveSamples(reportRows,activeSampleIds).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));renderAll()},
+  async refresh({syncDerived=true}={}){if(syncDerived){await reportsService.reconcileDuplicates();await reportsService.ensureFromLaboratory();await reportsService.reconcileAuthorizationHolds();}const [reportRows,samples]=await Promise.all([reportsService.all(),repositories.samples.all()]);const activeSampleIds=new Set(samples.map(x=>x.id));const normalizedReports=reportRows.map(r=>({...r,maxReportDate:calculateSlaDeadline(r.receptionDate,r.serviceType)||r.maxReportDate}));rows=visibleForActiveSamples(normalizedReports,activeSampleIds).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));renderAll()},
   init(){if(initialized)return;initialized=true;
     ['searchReportsPending','searchReportsAuth','searchReportsPortal','searchReportsFinal'].forEach(id=>$(id)?.addEventListener('input',renderAll));
     $('reportsAuthBatchStatus')?.addEventListener('change',()=>{const hold=isAuthorizationHold($('reportsAuthBatchStatus')?.value),date=$('reportsAuthBatchDate'),btn=$('reportsAuthBatchSave');if(date){date.disabled=hold;if(hold)date.value='';else if(!date.value)date.value=today()}if(btn)btn.textContent=hold?'Guardar seleccionados':'Autorizar seleccionados'});

@@ -11,7 +11,6 @@ export const MODULE_PERMISSION_MANIFEST=Object.freeze({
     waiting:{label:'En Espera',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
     stopped:{label:'Detenidas',read:P.SAMPLES_READ,write:P.SAMPLES_WRITE},
     catalogs:{label:'Catálogos',readAny:[P.CLIENTS_READ,P.CATALOGS_READ],writeAny:[P.CLIENTS_WRITE,P.CATALOGS_WRITE],denyRoles:['FACTURACION']},
-    monitoringPlanner:{label:'Planificador Inteligente',readAny:[P.SAMPLES_READ,P.CLIENTS_READ],write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']},
     import:{label:'Importar Excel',read:P.SAMPLES_WRITE,write:P.SAMPLES_WRITE,denyRoles:['FACTURACION']}
   }},
   laboratory:{id:'laboratory',label:'Laboratorio',read:P.LABORATORY_READ,write:P.LABORATORY_WRITE,views:{laboratory:{label:'Ingreso y Workspace',read:P.LABORATORY_READ,write:P.LABORATORY_WRITE}}},

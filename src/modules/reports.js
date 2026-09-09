@@ -1,5 +1,6 @@
 import {repositories} from '../data/repositories.js';
 import {eventBus} from '../core/event-bus.js';
+import {calculateSlaDeadline} from '../core/business-calendar.js';
 
 const clean=v=>String(v??'').trim();
 const upper=v=>clean(v).toUpperCase();
@@ -45,7 +46,7 @@ class ReportsService{
         analyst:lab.analyst,
         serviceType:lab.serviceType,
         receptionDate:lab.receptionDate,
-        maxReportDate:lab.maxReportDate,
+        maxReportDate:calculateSlaDeadline(lab.receptionDate,lab.serviceType)||lab.maxReportDate,
         reportStatus:'PENDING_DELIVERY',
         realDeliveryDate:'',
         authorizationStatus:'',

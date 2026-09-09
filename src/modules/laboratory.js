@@ -1,18 +1,18 @@
 import {repositories} from '../data/repositories.js';
 import {eventBus} from '../core/event-bus.js';
+import {calculateSlaDeadline,slaDaysForService} from '../core/business-calendar.js';
 
 const clean=v=>String(v??'').trim();
 const upper=v=>clean(v).toUpperCase();
 const stableId=(prefix,parent)=>`${prefix}_${clean(parent).replace(/[^A-Za-z0-9_-]/g,'_')}`;
 const isoDate=()=>new Date().toISOString().slice(0,10);
-function addDays(date,days){if(!date)return '';const d=new Date(`${date}T12:00:00`);if(Number.isNaN(d.getTime()))return '';d.setDate(d.getDate()+Number(days||0));return d.toISOString().slice(0,10)}
 function monthName(date){if(!date)return '';const d=new Date(`${date}T12:00:00`);if(Number.isNaN(d.getTime()))return '';return d.toLocaleDateString('es-EC',{month:'long'}).toUpperCase()}
 function labHistory(entry,action,userId,detail=''){return [...(entry?.history||[]),{action,at:new Date().toISOString(),userId,detail}]}
 
 class LaboratoryService{
   constructor(){this._reconcilePromise=null}
   async samples(){return repositories.samples.all()}
-  async entries(){const [entries,samples]=await Promise.all([repositories.laboratory.all(),repositories.samples.all()]);const active=new Set(samples.map(x=>x.id));return entries.filter(x=>!x.sampleId||active.has(x.sampleId))}
+  async entries(){const [entries,samples]=await Promise.all([repositories.laboratory.all(),repositories.samples.all()]);const active=new Set(samples.map(x=>x.id));return entries.filter(x=>!x.sampleId||active.has(x.sampleId)).map(x=>({...x,slaDays:slaDaysForService(x.serviceType),maxReportDate:calculateSlaDeadline(x.receptionDate,x.serviceType)||x.maxReportDate}))}
   async eligibleSamples(){
     const [samples,entries]=await Promise.all([this.samples(),this.entries()]);
     const official=new Set(entries.filter(x=>x.officialEntryAt).map(x=>x.sampleId));
@@ -28,7 +28,7 @@ class LaboratoryService{
       clientId:sample.clientId,branch:sample.branch,matrixId:sample.matrixId,groupId:sample.groupId,
       samplingDate:sample.samplingDate,decisionStatus:sample.workflow?.decisionStatus||'CONTINUAR',
       receptionDate,analyst:'',serviceType:'INTERNO',samplingMonth:monthName(sample.samplingDate),slaDays:8,
-      maxReportDate:addDays(receptionDate,8),labStatus:'PENDIENTE_INGRESO',officialEntryAt:'',officialEntryBy:'',
+      maxReportDate:calculateSlaDeadline(receptionDate,'INTERNO'),labStatus:'PENDIENTE_INGRESO',officialEntryAt:'',officialEntryBy:'',
       history:[{action:'LAB_ENTRY_PREPARED',at:new Date().toISOString(),userId,detail:'Borrador de ingreso creado desde Registro de Muestras'}]
     },{userId});
     return entry;
@@ -40,8 +40,8 @@ class LaboratoryService{
     const receptionDate=clean(input.receptionDate)||sample.receivedDate||isoDate();
     const analyst=clean(input.analyst);if(!analyst)throw new Error('Seleccione o escriba el analista.');
     const serviceType=upper(input.serviceType||'INTERNO');if(!['INTERNO','EXTERNO'].includes(serviceType))throw new Error('El tipo de servicio debe ser INTERNO o EXTERNO.');
-    const slaDays=serviceType==='EXTERNO'?15:8;
-    const maxReportDate=addDays(receptionDate,slaDays);
+    const slaDays=slaDaysForService(serviceType);
+    const maxReportDate=calculateSlaDeadline(receptionDate,serviceType);
     await this.ensureAnalyst(analyst,{userId});
     const after=await repositories.laboratory.update(entry.id,{
       receptionDate,analyst,serviceType,samplingMonth:upper(input.samplingMonth||monthName(sample.samplingDate)),
@@ -54,9 +54,9 @@ class LaboratoryService{
   async updateDraft(sampleId,input,{userId='LOCAL_USER'}={}){
     let entry=await this.entryBySample(sampleId);if(!entry)entry=await this.prepare(sampleId,{userId});
     if(entry.officialEntryAt)throw new Error('El ingreso ya es oficial. En Workspace solo se permite actualizar el analista.');
-    const receptionDate=clean(input.receptionDate)||entry.receptionDate||isoDate();const serviceType=upper(input.serviceType||'INTERNO');const slaDays=serviceType==='EXTERNO'?15:8;
+    const receptionDate=clean(input.receptionDate)||entry.receptionDate||isoDate();const serviceType=upper(input.serviceType||'INTERNO');const slaDays=slaDaysForService(serviceType);
     await this.ensureAnalyst(input.analyst,{userId});
-    return repositories.laboratory.update(entry.id,{receptionDate,analyst:clean(input.analyst),serviceType,samplingMonth:upper(input.samplingMonth),slaDays,maxReportDate:addDays(receptionDate,slaDays),history:labHistory(entry,'LAB_DRAFT_UPDATED',userId,'Datos previos al ingreso oficial actualizados')},{userId});
+    return repositories.laboratory.update(entry.id,{receptionDate,analyst:clean(input.analyst),serviceType,samplingMonth:upper(input.samplingMonth),slaDays,maxReportDate:calculateSlaDeadline(receptionDate,serviceType),history:labHistory(entry,'LAB_DRAFT_UPDATED',userId,'Datos previos al ingreso oficial actualizados')},{userId});
   }
   async saveAnalyst(entryId,analyst,{userId='LOCAL_USER'}={}){
     const entry=await repositories.laboratory.get(entryId);if(!entry)throw new Error('Ingreso de laboratorio no encontrado.');if(!entry.officialEntryAt)throw new Error('La muestra todavía no tiene ingreso oficial.');
@@ -87,14 +87,14 @@ class LaboratoryService{
         let entry=bySample.get(sample.id)||null;
         const receptionDate=clean(sample.receivedDate)||clean(sample.samplingDate)||entry?.receptionDate||isoDate();
         const serviceType=['INTERNO','EXTERNO'].includes(upper(entry?.serviceType))?upper(entry.serviceType):'INTERNO';
-        const slaDays=serviceType==='EXTERNO'?15:8;
+        const slaDays=slaDaysForService(serviceType);
         const payload={
           schemaVersion:1,sampleId:sample.id,code:sample.code,year:sample.year,codeFull:sample.codeFull,
           clientId:sample.clientId,branch:sample.branch,matrixId:sample.matrixId,groupId:sample.groupId,
           samplingDate:sample.samplingDate,decisionStatus:sample.workflow?.decisionStatus||'CONTINUAR',
           receptionDate,analyst:'---',serviceType,
           samplingMonth:upper(entry?.samplingMonth||monthName(sample.samplingDate)),slaDays,
-          maxReportDate:addDays(receptionDate,slaDays),labStatus:'EN_PROCESO',
+          maxReportDate:calculateSlaDeadline(receptionDate,serviceType),labStatus:'EN_PROCESO',
           officialEntryAt:new Date().toISOString(),officialEntryBy:userId
         };
         if(entry){

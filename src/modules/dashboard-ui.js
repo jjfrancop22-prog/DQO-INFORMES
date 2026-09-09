@@ -1,5 +1,6 @@
 import {repositories} from '../data/repositories.js';
 import {receivableTotals,receivableDisplayStatus} from './receivables.js';
+import {calculateSlaDeadline} from '../core/business-calendar.js';
 
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -23,7 +24,7 @@ function stageOf(x){
 }
 async function load(){
  const [samples,labs,reports,billing,receivables]=await Promise.all([repositories.samples.all(),repositories.laboratory.all(),repositories.reports.all(),repositories.billing.all(),repositories.receivables.all()]);
- const by=(a,k='sampleId')=>new Map(a.map(x=>[x[k],x]));const lm=by(labs),rm=by(reports),bm=by(billing),cm=by(receivables);
+ const normalizedLabs=labs.map(x=>({...x,maxReportDate:calculateSlaDeadline(x.receptionDate,x.serviceType)||x.maxReportDate}));const normalizedReports=reports.map(x=>({...x,maxReportDate:calculateSlaDeadline(x.receptionDate,x.serviceType)||x.maxReportDate}));const by=(a,k='sampleId')=>new Map(a.map(x=>[x[k],x]));const lm=by(normalizedLabs),rm=by(normalizedReports),bm=by(billing),cm=by(receivables);
  model=samples.map(sample=>{const x={sample,lab:lm.get(sample.id)||null,report:rm.get(sample.id)||null,billing:bm.get(sample.id)||null,receivable:cm.get(sample.id)||null};x.stage=stageOf(x);return x});
 }
 function monthNames(){return [['01','ENERO'],['02','FEBRERO'],['03','MARZO'],['04','ABRIL'],['05','MAYO'],['06','JUNIO'],['07','JULIO'],['08','AGOSTO'],['09','SEPTIEMBRE'],['10','OCTUBRE'],['11','NOVIEMBRE'],['12','DICIEMBRE']]}
