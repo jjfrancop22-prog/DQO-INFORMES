@@ -1,5 +1,5 @@
 let deferredInstallPrompt=null;
-const PWA_RELEASE='A7.0.21';
+const PWA_RELEASE='A7.0.31';
 const isStandalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;
 const byId=id=>document.getElementById(id);
 function setInstallVisible(show){for(const id of ['pepInstallApp','pepInstallAppHeader']){const el=byId(id);if(el)el.style.display=show&&!isStandalone()?'inline-flex':'none'}}
@@ -38,7 +38,7 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshing)return;refreshing=true;location.reload()});
   window.addEventListener('load',async()=>{
     try{
-      const reg=await navigator.serviceWorker.register('/service-worker.js?v=502A7021',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('/service-worker.js?v=502A7028',{updateViaCache:'none'});
       if(reg.waiting)showUpdate(reg);
       reg.addEventListener('updatefound',()=>{
         const worker=reg.installing;if(!worker)return;
