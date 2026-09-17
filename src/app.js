@@ -43,6 +43,7 @@ import {CloudReconciliationManager} from './modules/cloud-reconciliation-manager
 import {SyncResilienceManager} from './sync/sync-resilience-manager.js';
 import {initEnterpriseTableTools} from './core/enterprise-table-tools.js';
 import {addBusinessDays,businessDaysBetween,slaDaysForService} from './core/business-calendar.js';
+import {intelligentNotificationCenter} from './modules/intelligent-notification-center.js';
 
 const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 let allRows=[],queues={analysis:[],waiting:[],stopped:[],registry:[]},clients=[],matrices=[],lastRegistered=null,importRows=[],importPreviewRows=[],lastImportFileName='',lastImportFormat='',labPending=[],labEntries=[],analysisBulkMode=false;const analysisSelected=new Set();const REGISTRY_PAGE_SIZE=25;let registryPage=1;const adapter=firebaseCloudAdapterSingleton;const syncManager=new SyncManager(adapter);const syncFoundationUI=new SyncFoundationUI(syncManager);const newPcAutoBootstrap=new NewPcAutoBootstrap(adapter);const cloudReconciliationManager=new CloudReconciliationManager(adapter);let liveSyncManager=null;let globalSyncHealthUI=null;let syncResilienceManager=null;let permissionEnforcement=null;
@@ -85,7 +86,11 @@ function updateBranches(){const c=clients.find(x=>String(x.name).toUpperCase()==
 function renderFilterOptions(){const year=$('filterYear').value,matrix=$('filterMatrix').value;const years=[...new Set(allRows.map(x=>String(x.year)))].sort((a,b)=>b.localeCompare(a));$('filterYear').innerHTML='<option value="">Todos los años</option>'+years.map(y=>`<option value="${esc(y)}">${esc(y)}</option>`).join('');$('filterYear').value=years.includes(year)?year:'';$('filterMatrix').innerHTML='<option value="">Todas las matrices</option>'+matrices.map(m=>`<option value="${m.id}">${esc(m.label||m.name)}</option>`).join('');$('filterMatrix').value=matrices.some(m=>m.id===matrix)?matrix:''}
 function filteredRegistry(){const q=$('searchRegistry').value.trim().toLowerCase(),year=$('filterYear').value,matrixId=$('filterMatrix').value,group=$('filterGroup').value,decision=$('filterDecision').value,from=$('filterFrom').value,to=$('filterTo').value,matrix=matrices.find(m=>m.id===matrixId);return queues.registry.filter(x=>hay(x,q)&&(!year||String(x.year)===year)&&(!matrixId||(x.matrixCatalogId===matrixId||x.matrixId===matrix?.name))&&(!group||x.groupId===group)&&(!decision||x.workflow?.decisionStatus===decision)&&(!from||x.samplingDate>=from)&&(!to||x.samplingDate<=to))}
 
+// A7.0.32 — Orden estable en memoria: fecha de muestra más reciente y, a igualdad de fecha, código mayor.
+// Se calcula una sola vez al refrescar los datos; abrir la vista o paginar NO vuelve a consultar ni reordenar la base.
 function registryCodeNumber(value){const m=String(value??'').match(/\d+/g);return m?Number(m.join(''))||0:0}
+function registryStableCompare(a,b){const ad=String(a?.samplingDate||''),bd=String(b?.samplingDate||'');if(ad!==bd)return bd.localeCompare(ad);const ac=registryCodeNumber(a?.code),bc=registryCodeNumber(b?.code);if(ac!==bc)return bc-ac;const codeCmp=String(b?.code||'').localeCompare(String(a?.code||''),'es',{numeric:true});if(codeCmp)return codeCmp;return String(b?.createdAt||b?.updatedAt||'').localeCompare(String(a?.createdAt||a?.updatedAt||''))}
+function buildQueuesFromRows(rows){const ordered=[...rows].sort(registryStableCompare);return {analysis:ordered.filter(x=>x.workflow?.workflowStage==='ANALYSIS_REGISTRATION'),waiting:ordered.filter(x=>x.workflow?.workflowStage==='WAITING'),stopped:ordered.filter(x=>x.workflow?.decisionStatus==='DETENIDA'),registry:ordered.filter(x=>x.workflow?.workflowStage==='SAMPLE_REGISTRY'&&x.workflow?.recordStatus==='INGRESADA')}}
 function registryExcelRows(){const from=$('filterFrom').value,to=$('filterTo').value;return queues.registry.filter(x=>(!from||x.samplingDate>=from)&&(!to||x.samplingDate<=to)).sort((a,b)=>{const ad=String(a.samplingDate||''),bd=String(b.samplingDate||'');if(ad!==bd)return bd.localeCompare(ad);const ac=registryCodeNumber(a.code),bc=registryCodeNumber(b.code);if(ac!==bc)return bc-ac;return String(b.code||'').localeCompare(String(a.code||''),'es',{numeric:true})})}
 function excelCell(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function exportRegistryExcel(){
@@ -152,14 +157,20 @@ async function openLabHistory(sampleId){try{const rows=await labService.auditFor
 async function refresh({syncDerived=true}={}){
   const token=performanceCoordinator.start('refresh:core');
   try{
-    allRows=(await service.all()).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
-    queues=await service.queues();
+    // Una sola lectura de muestras por ciclo. Antes service.queues() volvía a leer toda la base.
+    allRows=(await service.all()).sort(registryStableCompare);
+    window.__pepNotificationRows=allRows;
+    if(!window.__pepNotificationSnapshot)window.__pepNotificationSnapshot=new Map(allRows.map(x=>[x.id,structuredClone(x)]));
+    queues=buildQueuesFromRows(allRows);
     if(allRows.length){
       const s=allRows.reduce((best,x)=>(!best||(x.createdAt||'')>(best.createdAt||''))?x:best,null);
       lastRegistered={client:s.clientId,branch:s.branch,matrixCatalogId:s.matrixCatalogId,samplingDate:s.samplingDate,receivedDate:s.receivedDate,monthFrequency:s.monthFrequency,observations:s.observations,requiresSpecialAnalysis:!!(s.workflow?.requirements?.dqo||s.workflow?.requirements?.surfactants)};
     }
     $('countAnalysis').textContent=queues.analysis.length;$('countWaiting').textContent=queues.waiting.length;$('countStopped').textContent=queues.stopped.length;$('countRegistry').textContent=queues.registry.length;if($('countMonitoring'))$('countMonitoring').textContent=allRows.length;
-    await loadCatalogs();renderStats();renderTables();await loadLaboratory({syncDerived});
+    await loadCatalogs();
+    // Comparte la fotografía ya cargada con el Planificador. Así entrar al Planificador no vuelve a leer samples/clientes/matrices.
+    window.dispatchEvent(new CustomEvent('pep:core-data-ready',{detail:{samples:allRows,clients,matrices}}));
+    renderStats();renderTables();await loadLaboratory({syncDerived});
     await outboxRepository.cleanupConfirmed();
     const [pendingOutbox,audit,health]=await Promise.all([outboxRepository.pending(),auditRepository.all(),adapter.health()]);
     $('dbStatus').textContent='OK';$('sampleCount').textContent=allRows.length;$('outboxCount').textContent=pendingOutbox.length;$('auditCount').textContent=audit.length;$('cloudStatus').textContent=health.provider;$('deviceId').textContent=getDeviceId();if($('catalogClientsCount'))$('catalogClientsCount').textContent=clients.length;if($('catalogBranchesCount'))$('catalogBranchesCount').textContent=clients.reduce((n,c)=>n+(c.branches||[]).length,0);if($('catalogMatricesCount'))$('catalogMatricesCount').textContent=matrices.length;
@@ -330,8 +341,20 @@ async function initializeAuthenticatedERP({alreadyInitialized=false}={}){
   loginUI.onStatusChange=async()=>{await securityFoundationUI.refresh();await authenticationInfrastructureUI.refresh();};
   await loginUI.init();await claimsRolesUI.init();await customClaimsManagerUI.init();await enterpriseUserManagerUI.init();dynamicPermissionUI.init();await firestoreRulesValidationUI.init();
   permissionEnforcement=new PermissionUIEnforcer({toast});permissionEnforcement.init();
+  intelligentNotificationCenter.init();
 
-  liveSyncManager=getLiveSyncManager(syncManager,{onRemoteApplied:async()=>{await refresh({syncDerived:false})}});
+  // La sincronización Firebase queda intacta. Solo agrupamos repintados UI cuando llegan varios cambios seguidos.
+  let remoteUiRefreshTimer=null,remoteUiRefreshRunning=false,remoteUiRefreshPending=false;
+  const scheduleRemoteUiRefresh=async()=>{
+    remoteUiRefreshPending=true;
+    clearTimeout(remoteUiRefreshTimer);
+    remoteUiRefreshTimer=setTimeout(async()=>{
+      if(remoteUiRefreshRunning)return;
+      remoteUiRefreshRunning=true;remoteUiRefreshPending=false;
+      try{await refresh({syncDerived:false})}finally{remoteUiRefreshRunning=false;if(remoteUiRefreshPending)scheduleRemoteUiRefresh()}
+    },180);
+  };
+  liveSyncManager=getLiveSyncManager(syncManager,{onRemoteApplied:async()=>{scheduleRemoteUiRefresh()}});
   await liveSyncManager.init({restore:false});
 
   // V5.0.0-A1.1 — Baseline & Outbox Reconciliation: después de Login/Claims y antes de Dashboard/Live Sync.

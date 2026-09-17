@@ -83,3 +83,13 @@ Corrección puntual del Planificador Inteligente.
 - La celda muestra `🔒 Código registrado · esperando ingreso a Laboratorio`.
 - La campana no genera alertas de planificación para obligaciones que ya tienen código en análisis.
 - `openPlanningDate` y el guardado de fecha incorporan una validación defensiva para impedir duplicar la obligación aunque se intente abrir por otra vía.
+
+
+## A7.0.33 — Optimización Planificador + orden estable
+- Registro de Muestras queda por defecto en **Fecha de muestra ↓ + Código ↓**.
+- El orden se calcula una sola vez por actualización de datos; entrar a la vista, paginar o filtrar no dispara una nueva lectura.
+- Se eliminó la segunda lectura completa de `samples` que antes hacía `service.queues()` durante cada refresh.
+- El Planificador reutiliza la fotografía en memoria ya cargada por el núcleo; al entrar ya no ejecuta automáticamente otra lectura de clientes + muestras + matrices.
+- El botón **↻ Actualizar** del Planificador conserva la recarga manual completa cuando se necesite.
+- Los eventos remotos se agrupan durante 180 ms antes de repintar la interfaz para evitar múltiples renders consecutivos.
+- **Firebase, listeners, reglas, autenticación y lógica de sincronización no fueron modificados.**
