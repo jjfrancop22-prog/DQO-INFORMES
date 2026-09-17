@@ -1,9 +1,12 @@
-const SW_VERSION='A7.0.34';
-const CACHE_NAME='pep-enterprise-static-v502a7033';
+const SW_VERSION='A7.0.37';
+const CACHE_NAME='pep-enterprise-static-v502a7037';
 const STATIC_ASSETS=['/manifest.webmanifest','/icons/pep-192.png','/icons/pep-512.png'];
 
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(STATIC_ASSETS)).catch(()=>{}));
+  event.waitUntil((async()=>{
+    try{const cache=await caches.open(CACHE_NAME);await cache.addAll(STATIC_ASSETS)}catch{}
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate',event=>{
