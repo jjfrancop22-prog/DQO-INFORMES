@@ -1,0 +1,14 @@
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/VERSION.txt
+  Cache-Control: no-cache, no-store, must-revalidate
+/*.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/src/*.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/src/modules/*.js
+  Cache-Control: no-cache, no-store, must-revalidate
+/src/pwa/*.js
+  Cache-Control: no-cache, no-store, must-revalidate
