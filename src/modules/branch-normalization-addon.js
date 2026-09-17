@@ -167,6 +167,11 @@ async function applyNormalization(){
       for(const row of fresh.matches[key]){await repositories[key].update(row.id,{branch:fresh.official,clientId:fresh.client.name,...historyPatch(row,fresh.client,fresh.aliases,fresh.official)},{userId});updated++;}
     }
     await reloadClients();selectedClientId=fresh.client.id;renderClientOptions();renderBranches();
+    // Keep the already-open client editor coherent; otherwise its stale inputs could restore old aliases on Guardar cliente.
+    if($('catalogClientId')?.value===fresh.client.id){
+      const latest=selectedClient(); const editor=$('catalogBranches');
+      if(editor&&latest){editor.innerHTML='';for(const b of (latest.branches||[])){const row=document.createElement('div');row.className='branch-line';row.innerHTML=`<input class="catalogBranchInput" value="${esc(b)}"><button type="button" class="iconbtn danger">×</button>`;row.querySelector('button').onclick=()=>row.remove();editor.appendChild(row);}}
+    }
     alert(`Unificación completada. ${updated} registros actualizados. Nombre oficial: ${fresh.official}`);
     $('bnResult').innerHTML=`<div class="bn-success"><b>✅ Unificación completada.</b><br><b>${esc(fresh.official)}</b> quedó como nombre único en el catálogo. Se actualizaron ${updated} registros operativos y ${fresh.planMatches.length} referencia(s) del plan de monitoreo.<br><span class="muted">Los cambios fueron realizados mediante los repositorios normales del ERP, por lo que quedan en Auditoría/Outbox y se sincronizan por el flujo estable.</span></div>`;
     document.dispatchEvent(new CustomEvent('pep:branch-normalized',{detail:{clientId:fresh.client.id,official:fresh.official}}));

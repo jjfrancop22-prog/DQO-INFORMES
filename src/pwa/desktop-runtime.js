@@ -1,5 +1,5 @@
 let deferredInstallPrompt=null;
-const PWA_RELEASE='A7.0.33';
+const PWA_RELEASE='A7.0.34';
 const isStandalone=()=>window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;
 const byId=id=>document.getElementById(id);
 function setInstallVisible(show){for(const id of ['pepInstallApp','pepInstallAppHeader']){const el=byId(id);if(el)el.style.display=show&&!isStandalone()?'inline-flex':'none'}}

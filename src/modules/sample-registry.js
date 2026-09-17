@@ -6,6 +6,15 @@ import {uuid} from '../core/uuid.js';
 const clean=v=>String(v??'').trim();
 const upper=v=>clean(v).toUpperCase().replace(/\s+/g,' ');
 const now=()=>new Date().toISOString();
+const norm=v=>upper(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function canonicalBranch(client,value){
+  let current=upper(value); if(!current||!client)return current;
+  const hist=Array.isArray(client.branchNormalizationHistory)?client.branchNormalizationHistory:[];
+  // Apply oldest→newest so chained corrections also resolve to the latest official name.
+  for(const h of hist){const aliases=(h.aliases||[]).map(norm);if(aliases.includes(norm(current)))current=upper(h.official||current);}
+  return current;
+}
+function canonicalBranches(client,values=[]){return [...new Set(values.map(v=>canonicalBranch(client,v)).filter(Boolean))];}
 const DEFAULT_MATRICES=[
   {name:'CONSUMO',label:'CONSUMO',groupId:'AGUA',codeFamily:'AGUA'},
   {name:'RESIDUAL',label:'RESIDUAL',groupId:'AGUA',codeFamily:'AGUA'},
@@ -57,11 +66,14 @@ async function propagateSampleIdentity(sample,before,{userId='LOCAL_USER',reason
 }
 
 async function upsertClient(name,branch,userId){
-  const normalized=upper(name), branchName=upper(branch); if(!normalized)throw new Error('El cliente es obligatorio.');
+  const normalized=upper(name); if(!normalized)throw new Error('El cliente es obligatorio.');
   const all=await repositories.clients.all(); let client=all.find(x=>upper(x.name)===normalized);
-  if(!client)return repositories.clients.create({name:normalized,identification:'',branches:branchName?[branchName]:[]},{userId});
-  const branches=[...(client.branches||[])]; if(branchName&&!branches.some(x=>upper(x)===branchName))branches.push(branchName);
-  if(branches.length!==(client.branches||[]).length)client=await repositories.clients.update(client.id,{branches},{userId});
+  const rawBranch=upper(branch);
+  if(!client)return repositories.clients.create({name:normalized,identification:'',branches:rawBranch?[rawBranch]:[]},{userId});
+  const branchName=canonicalBranch(client,rawBranch);
+  const branches=canonicalBranches(client,[...(client.branches||[]),branchName]);
+  const changed=branches.length!==(client.branches||[]).length||branches.some((b,i)=>norm(b)!==norm((client.branches||[])[i]));
+  if(changed)client=await repositories.clients.update(client.id,{branches},{userId});
   return client;
 }
 
@@ -76,10 +88,12 @@ export class SampleRegistryService{
   async clients(){return (await repositories.clients.all()).sort((a,b)=>String(a.name).localeCompare(String(b.name),'es'))}
   async saveClientCatalog(input,{userId='LOCAL_USER'}={}){
     const name=upper(input.name); if(!name)throw new Error('El nombre del cliente es obligatorio.');
-    const branches=[...new Set((input.branches||[]).map(upper).filter(Boolean))]; const all=await repositories.clients.all();
+    const requestedBranches=[...new Set((input.branches||[]).map(upper).filter(Boolean))]; const all=await repositories.clients.all();
     const duplicate=all.find(x=>upper(x.name)===name&&x.id!==input.id); if(duplicate)throw new Error('Ya existe un cliente con ese nombre.');
-    if(!input.id)return repositories.clients.create({name,identification:clean(input.identification),branches},{userId});
+    if(!input.id)return repositories.clients.create({name,identification:clean(input.identification),branches:requestedBranches},{userId});
     const before=await repositories.clients.get(input.id); if(!before)throw new Error('Cliente no encontrado.');
+    // A7.0.34: a stale catalog form/another PC cannot resurrect aliases already unified.
+    const branches=canonicalBranches(before,requestedBranches);
     const saved=await repositories.clients.update(input.id,{name,identification:clean(input.identification),branches},{userId});
     if(upper(before.name)!==name){
       const samples=await repositories.samples.all();

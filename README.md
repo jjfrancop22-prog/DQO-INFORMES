@@ -1,3 +1,9 @@
+## A7.0.34 — Catálogo de sucursales canónico / anti-regresión
+- Evita que un formulario antiguo o una segunda PC vuelva a crear nombres de sucursal que ya fueron unificados.
+- Las altas/ediciones resuelven automáticamente alias históricos al nombre oficial.
+- Al unificar, el editor de cliente abierto se refresca inmediatamente con el catálogo nuevo.
+- No cambia Firebase, Live Sync, autenticación ni estructura de dominios.
+
 
 ## A7.0.29 — Consulta rápida de fecha máxima de informe
 - En Registro de Muestras, el código es clicable para consultar la fecha máxima de emisión calculada por SLA.
