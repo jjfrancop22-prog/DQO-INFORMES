@@ -397,7 +397,7 @@ const startupManager=new StartupManager({
   onReady:async status=>{
     window.pepEnterpriseSessionGate=startupManager.sessionGate;
     window.pepStartupManager=startupManager;
-    if(status.sessionUnlocked)toast('PEP V5.0.2-A7.0.37 listo · Reingreso sincronizado antes de abrir');
+    if(status.sessionUnlocked)toast('PEP V5.0.2-A7.0.38 listo · Reingreso sincronizado antes de abrir');
   },
   onError:async error=>{
     if($('dbStatus'))$('dbStatus').textContent='ERROR';

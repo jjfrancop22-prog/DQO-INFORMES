@@ -35,7 +35,12 @@ const RULES={
 
 let clientCache=[], sampleCache=[], matrixCache=[];
 const expandedPlannerClients=new Set();
-let plannerSection='MULTI';
+let plannerSection='SINGLE';
+// A7.0.38: memo persistente del cálculo anual. Cambiar de pestaña ya no vuelve a recorrer todas las muestras.
+let plannerDataEpoch=0;
+const plannerAnnualStateMemo=new Map();
+function invalidatePlannerMemo(){plannerDataEpoch++;plannerAnnualStateMemo.clear();}
+
 let plannerSearch='';
 let plannerStatus='ALL';
 let plannerFrequency='ALL';
@@ -396,14 +401,19 @@ function displayMonthForPeriod(plan,pp,st){
   }
   return pp.month;
 }
-function renderPlanner(){
+function renderPlanner(matrixOnly=false){
   if(!$('planningMatrix'))return;
   const year=Number($('planningYear').value||new Date().getFullYear());
   const month=Number($('planningMonth').value||1);
   const groups=[];
   for(const c of clientCache){const plans=(c.monitoringPlans||[]).map((p,planIndex)=>({plan:p,planIndex})).filter(x=>x.plan.active!==false);if(plans.length)groups.push({client:c,plans});}
-  const stateCache=new Map();
-  const getStates=(client,plan)=>{const key=`${client.id}|${plan.id||client.monitoringPlans?.indexOf(plan)}|${year}`;if(!stateCache.has(key))stateCache.set(key,periods(plan,year,client).map(pp=>({pp,st:stateFor(client,plan,pp),displayMonth:null})).map(x=>({...x,displayMonth:displayMonthForPeriod(plan,x.pp,x.st)})));return stateCache.get(key)};
+  const getStates=(client,plan)=>{
+    const key=`${plannerDataEpoch}|${client.id}|${plan.id||client.monitoringPlans?.indexOf(plan)}|${year}`;
+    if(!plannerAnnualStateMemo.has(key)){
+      plannerAnnualStateMemo.set(key,periods(plan,year,client).map(pp=>({pp,st:stateFor(client,plan,pp),displayMonth:null})).map(x=>({...x,displayMonth:displayMonthForPeriod(plan,x.pp,x.st)})));
+    }
+    return plannerAnnualStateMemo.get(key);
+  };
   let done=0,planned=0,pending=0,late=0,stopped=0;
   for(const {client,plans} of groups)for(const {plan} of plans)for(const {st} of getStates(client,plan)){if(st.type==='done')done++;else if(st.type==='planned')planned++;else if(st.type==='late')late++;else if(st.type==='stopped')stopped++;else pending++;}
   $('planningSummary').innerHTML=`<span class="plan-pill">✅ ${done} cumplidos</span><span class="plan-pill">🟠 ${planned} planificados / en análisis</span><span class="plan-pill">⬜ ${pending} pendientes</span><span class="plan-pill">🔴 ${stopped} detenidos / requieren retoma</span><span class="plan-pill">⛔ ${late} vencidos</span>`;
@@ -425,16 +435,24 @@ function renderPlanner(){
   };
   let body='';
   for(const group of source){const {client,plans}=group;if(plans.length===1){body+=detailRow({client,...plans[0]});continue;}const planData=plans.map(x=>({x,states:getStates(client,x.plan)}));const branchCount=new Set(plans.map(x=>norm(canonicalBranch(client,x.plan.branch)||'GENERAL'))).size;const expanded=expandedPlannerClients.has(String(client.id));const monthCells=MONTHS.map((m,idx)=>{const entries=planData.flatMap(d=>d.states.filter(x=>x.displayMonth===idx+1));if(!entries.length)return '<td class="plan-na">—</td>';const counts={done:0,planned:0,pending:0,late:0,stopped:0};entries.forEach(e=>counts[e.st.type]=(counts[e.st.type]||0)+1);const cellType=Object.keys(counts).filter(k=>counts[k]>0).sort((a,b)=>(severity[b]||0)-(severity[a]||0))[0]||'pending';const parts=[];if(counts.done)parts.push(`✅ ${counts.done}`);if(counts.planned)parts.push(`🟠 ${counts.planned}`);if(counts.pending)parts.push(`⬜ ${counts.pending}`);if(counts.stopped)parts.push(`🔴 ${counts.stopped}`);if(counts.late)parts.push(`⛔ ${counts.late}`);return `<td class="plan-cell-${cellType}"><div class="plan-client-agg">${parts.join(' · ')}</div></td>`}).join('');body+=`<tr class="plan-client-summary" data-plan-client-toggle="${esc(client.id)}"><td><span class="plan-client-toggle">${expanded?'▼':'▶'}</span><b>${esc(client.name)}</b><span class="plan-client-meta">${branchCount} sucursal${branchCount===1?'':'es'} · ${plans.length} planes · clic para ${expanded?'contraer':'abrir cronograma'}</span></td>${monthCells}</tr>`;if(expanded)body+=plans.map(x=>detailRow({client,...x},true)).join('');}
-  $('planningMatrix').innerHTML=`<div class="planner-section-tabs"><button type="button" class="planner-section-tab ${plannerSection==='MULTI'?'active':''}" data-planner-section="MULTI">▸ Clientes agrupados (${multis.length})</button><button type="button" class="planner-section-tab ${plannerSection==='SINGLE'?'active':''}" data-planner-section="SINGLE">1 monitoreo (${singles.length})</button></div><div class="planner-render-note"><span>🧠 Solo se dibuja una sección a la vez para reducir carga y mantener la vista fluida.</span><b>${source.length} cliente${source.length===1?'':'s'} visibles</b></div>${source.length?`<div class="plan-matrix-wrap"><table class="plan-matrix"><thead><tr><th>Cliente / sucursal / matriz / frecuencia</th>${MONTHS.map(m=>`<th>${m.slice(0,3)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`:'<div class="planner-empty-filter">No hay clientes que coincidan con los filtros de esta sección.</div>'}`;
-  const due=[];for(const {client,plans} of groups)for(const {plan,planIndex} of plans)for(const pp of periods(plan,year,client).filter(x=>x.month===month)){const st=stateFor(client,plan,pp);due.push({client,plan,planIndex,pp,st})}
+  $('planningMatrix').innerHTML=`<div class="planner-section-tabs"><button type="button" class="planner-section-tab ${plannerSection==='SINGLE'?'active':''}" data-planner-section="SINGLE">1 monitoreo (${singles.length})</button><button type="button" class="planner-section-tab ${plannerSection==='MULTI'?'active':''}" data-planner-section="MULTI">▸ Clientes agrupados (${multis.length})</button></div><div class="planner-render-note"><span>🧠 Solo se dibuja una sección a la vez para reducir carga y mantener la vista fluida.</span><b>${source.length} cliente${source.length===1?'':'s'} visibles</b></div>${source.length?`<div class="plan-matrix-wrap"><table class="plan-matrix"><thead><tr><th>Cliente / sucursal / matriz / frecuencia</th>${MONTHS.map(m=>`<th>${m.slice(0,3)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`:'<div class="planner-empty-filter">No hay clientes que coincidan con los filtros de esta sección.</div>'}`;
+  // En un cambio visual de sección no se reconstruyen obligaciones ni alertas: solo la matriz.
+  if(matrixOnly){
+    document.querySelectorAll('[data-planner-section]').forEach(b=>b.onclick=()=>{const next=b.dataset.plannerSection;if(next===plannerSection)return;plannerSection=next;renderPlanner(true)});
+    document.querySelectorAll('[data-plan-client-toggle]').forEach(el=>{el.onclick=e=>{if(e.target.closest('[data-plan-schedule],[data-plan-today]'))return;const id=String(el.dataset.planClientToggle);expandedPlannerClients.has(id)?expandedPlannerClients.delete(id):expandedPlannerClients.add(id);renderPlanner(true)}});
+    document.querySelectorAll('[data-plan-schedule]').forEach(el=>{el.onclick=e=>{e.stopPropagation();openPlanningDate(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});
+    document.querySelectorAll('[data-plan-today]').forEach(el=>{el.onclick=e=>{e.stopPropagation();showRegisterFromPlanner(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});
+    return;
+  }
+  const due=[];for(const {client,plans} of groups)for(const {plan,planIndex} of plans)for(const x of getStates(client,plan).filter(x=>x.pp.month===month)){due.push({client,plan,planIndex,pp:x.pp,st:x.st})}
   const dueFiltered=due.filter(x=>{const txt=norm([x.client.name,canonicalBranch(x.client,x.plan.branch),x.plan.matrixName,x.plan.groupId,x.plan.frequency].join(' '));if(plannerSearch&&!txt.includes(plannerSearch))return false;if(plannerFrequency!=='ALL'&&norm(x.plan.frequency)!==plannerFrequency)return false;if(plannerStatus==='ACTION'&&!['late','stopped','pending'].includes(x.st.type))return false;if(!['ALL','ACTION'].includes(plannerStatus)&&x.st.type!==plannerStatus)return false;return true;});
   $('planningMonthTable').innerHTML=dueFiltered.length?`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Sucursal</th><th>Matriz</th><th>Frecuencia</th><th>Período</th><th>Límite</th><th>Estado / trazabilidad</th></tr></thead><tbody>${dueFiltered.map(x=>`<tr class="${x.st.type==='stopped'?'plan-cell-stopped':''}"><td><b>${esc(x.client.name)}</b></td><td>${esc(canonicalBranch(x.client,x.plan.branch)||'GENERAL')}</td><td>${esc(x.plan.matrixName||x.plan.groupId||'TODAS')}</td><td>${esc(x.plan.frequency)}</td><td><b>${esc(x.pp.label)}</b></td><td>${esc(x.pp.due)}</td><td>${x.st.chain?.samples?.length?chainHtml(x.st.chain,x.pp):esc(x.st.text)}${x.st.type==='stopped'&&!x.st.scheduledDate?`<span class="retake-alert">⚠ PLANIFICAR ${esc(x.st.nextLabel)}</span>`:''}${x.st.scheduledDate?`<span class="plan-date">📅 Programado: ${esc(humanDate(x.st.scheduledDate))}</span>`:''}${x.st.chain?.inAnalysis?`<span class="plan-date">🔒 Código registrado · esperando ingreso a Laboratorio</span>`:(x.st.type!=='done'?`<button class="btn secondary small" type="button" style="margin-top:5px" data-plan-schedule data-client-id="${esc(x.client.id)}" data-plan-id="${esc(x.plan.id||`INDEX-${x.planIndex}`)}" data-plan-year="${x.pp.year}" data-plan-label="${esc(x.pp.label)}">📅 Programar</button> <button class="btn blue small" type="button" style="margin-top:5px" data-plan-today data-client-id="${esc(x.client.id)}" data-plan-id="${esc(x.plan.id||`INDEX-${x.planIndex}`)}" data-plan-year="${x.pp.year}" data-plan-label="${esc(x.pp.label)}">⚡ Hoy</button>`:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No hay obligaciones del mes que coincidan con los filtros.</div>';
-  document.querySelectorAll('[data-planner-section]').forEach(b=>b.onclick=()=>{plannerSection=b.dataset.plannerSection;renderPlanner()});document.querySelectorAll('[data-plan-client-toggle]').forEach(el=>{el.onclick=e=>{if(e.target.closest('[data-plan-schedule],[data-plan-today]'))return;const id=String(el.dataset.planClientToggle);expandedPlannerClients.has(id)?expandedPlannerClients.delete(id):expandedPlannerClients.add(id);renderPlanner()}});document.querySelectorAll('[data-plan-schedule]').forEach(el=>{el.onclick=e=>{e.stopPropagation();openPlanningDate(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});document.querySelectorAll('[data-plan-today]').forEach(el=>{el.onclick=e=>{e.stopPropagation();showRegisterFromPlanner(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});
+  document.querySelectorAll('[data-planner-section]').forEach(b=>b.onclick=()=>{const next=b.dataset.plannerSection;if(next===plannerSection)return;plannerSection=next;renderPlanner(true)});document.querySelectorAll('[data-plan-client-toggle]').forEach(el=>{el.onclick=e=>{if(e.target.closest('[data-plan-schedule],[data-plan-today]'))return;const id=String(el.dataset.planClientToggle);expandedPlannerClients.has(id)?expandedPlannerClients.delete(id):expandedPlannerClients.add(id);renderPlanner(true)}});document.querySelectorAll('[data-plan-schedule]').forEach(el=>{el.onclick=e=>{e.stopPropagation();openPlanningDate(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});document.querySelectorAll('[data-plan-today]').forEach(el=>{el.onclick=e=>{e.stopPropagation();showRegisterFromPlanner(el.dataset.clientId,el.dataset.planId,el.dataset.planYear,el.dataset.planLabel)}});
   renderPlanningAlerts(year);
 }
 
 async function init(){try{installStyles();await reload();ensureCatalogAddon();ensurePeriodAssist();ensurePlannerControls();renderPlanner();
   // A7.0.32: el núcleo entrega su fotografía en memoria. No se toca Firebase ni Live Sync.
-  window.addEventListener('pep:core-data-ready',e=>{const d=e.detail||{};if(Array.isArray(d.clients))clientCache=d.clients;if(Array.isArray(d.samples))sampleCache=d.samples;if(Array.isArray(d.matrices))matrixCache=d.matrices;if(document.getElementById('intelligentPlanning')?.classList.contains('active'))renderPlanner()});
+  window.addEventListener('pep:core-data-ready',e=>{const d=e.detail||{};if(Array.isArray(d.clients))clientCache=d.clients;if(Array.isArray(d.samples))sampleCache=d.samples;if(Array.isArray(d.matrices))matrixCache=d.matrices;invalidatePlannerMemo();if(document.getElementById('intelligentPlanning')?.classList.contains('active'))renderPlanner()});
   document.addEventListener('click',e=>{if(e.target.closest('[data-client-catalog]')||e.target.id==='newClientCatalog'||e.target.id==='openClients'||e.target.id==='manageClients'||e.target.id==='quickBranch')setTimeout(refreshCatalogPlanEditor,80);if(e.target.closest('.tab[data-view="intelligentPlanning"]'))setTimeout(()=>renderPlanner(),0)});const obs=new MutationObserver(()=>{ensureCatalogAddon();ensurePeriodAssist()});obs.observe(document.body,{childList:true,subtree:true});}catch(e){console.error('[Planning Addon]',e)}}
 window.addEventListener('DOMContentLoaded',init,{once:true});
