@@ -1,4 +1,4 @@
-const SW_VERSION='A7.0.40';
+const SW_VERSION='A7.0.41';
 const CACHE_NAME='pep-enterprise-static-v502a7037';
 const STATIC_ASSETS=['/manifest.webmanifest','/icons/pep-192.png','/icons/pep-512.png'];
 
