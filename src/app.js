@@ -343,18 +343,27 @@ async function initializeAuthenticatedERP({alreadyInitialized=false}={}){
   permissionEnforcement=new PermissionUIEnforcer({toast});permissionEnforcement.init();
   intelligentNotificationCenter.init();
 
-  // La sincronización Firebase queda intacta. Solo agrupamos repintados UI cuando llegan varios cambios seguidos.
+  // V5.0.2-A7.0.43 — Fluidez de captura: Firebase/Live Sync NO cambia.
+  // Antes, cualquier cambio remoto (incluido cada registro BILLING de una carga masiva)
+  // disparaba refresh() del núcleo: muestras + catálogos + laboratorio + vistas secundarias.
+  // Eso competía con el hilo de UI mientras el usuario escribía en Registrar muestra.
+  // Ahora solo los dominios que afectan el núcleo (SAMPLES/CLIENTS/CATALOGS/LABORATORY)
+  // solicitan ese repintado. BILLING/RECEIVABLES/REPORTS ya quedan persistidos por Live Sync
+  // y sus propias vistas hacen refresh al abrirse, sin bloquear la digitación en Monitoreo.
   let remoteUiRefreshTimer=null,remoteUiRefreshRunning=false,remoteUiRefreshPending=false;
-  const scheduleRemoteUiRefresh=async()=>{
+  const scheduleRemoteUiRefresh=async(change={})=>{
+    const domain=String(change?.domain||'').toUpperCase();
+    if(['BILLING','RECEIVABLES','REPORTS'].includes(domain))return;
     remoteUiRefreshPending=true;
     clearTimeout(remoteUiRefreshTimer);
+    const editing=document.activeElement?.matches?.('input,textarea,select');
     remoteUiRefreshTimer=setTimeout(async()=>{
       if(remoteUiRefreshRunning)return;
       remoteUiRefreshRunning=true;remoteUiRefreshPending=false;
-      try{await refresh({syncDerived:false})}finally{remoteUiRefreshRunning=false;if(remoteUiRefreshPending)scheduleRemoteUiRefresh()}
-    },180);
+      try{await refresh({syncDerived:false})}finally{remoteUiRefreshRunning=false;if(remoteUiRefreshPending)scheduleRemoteUiRefresh({domain})}
+    },editing?650:220);
   };
-  liveSyncManager=getLiveSyncManager(syncManager,{onRemoteApplied:async()=>{scheduleRemoteUiRefresh()}});
+  liveSyncManager=getLiveSyncManager(syncManager,{onRemoteApplied:async change=>{scheduleRemoteUiRefresh(change)}});
   await liveSyncManager.init({restore:false});
 
   // V5.0.0-A1.1 — Baseline & Outbox Reconciliation: después de Login/Claims y antes de Dashboard/Live Sync.
