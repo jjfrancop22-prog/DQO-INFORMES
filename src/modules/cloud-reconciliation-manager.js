@@ -54,7 +54,7 @@ export class CloudReconciliationManager{
     if(!health.connected)throw new Error('No fue posible conectar Firebase para reconciliar datos.');
     return health;
   }
-  async localCounts(){const out={};for(const d of SYNC_DOMAINS)out[d.id]=(await getAll(STORES[d.store])).length;return out}
+  async localCounts(){const pairs=await Promise.all(SYNC_DOMAINS.map(async d=>[d.id,(await getAll(STORES[d.store])).length]));return Object.fromEntries(pairs)}
   async pendingProtection(){
     const rows=(await outboxRepository.all()).filter(x=>['PENDING','ERROR'].includes(String(x.status||'').toUpperCase()));
     const ids=new Set(rows.map(x=>key(x.domain,x.entityId)));
@@ -62,7 +62,7 @@ export class CloudReconciliationManager{
   }
   async reconcileHistoricalOutbox(allowed){
     const before=await this.pendingProtection();
-    if(!before.count)return {...before,confirmedHistorical:0};
+    if(!before.count)return {...before,confirmedHistorical:0,snapshots:new Map()};
     const allowedSet=new Set(allowed.map(x=>x.id));
     const grouped=new Map();
     for(const row of before.rows){
@@ -71,12 +71,12 @@ export class CloudReconciliationManager{
       if(!grouped.has(domain))grouped.set(domain,[]);
       grouped.get(domain).push(row);
     }
-    let confirmedHistorical=0;
+    let confirmedHistorical=0;const snapshots=new Map();
     for(const [domain,pendingRows] of grouped){
       const cfg=allowed.find(x=>x.id===domain);if(!cfg)continue;
       this.row(domain,cfg.label||domain,'RUN',`Validando ${pendingRows.length} operación(es) pendientes…`);
       let snapshot;
-      try{snapshot=await this.fetchSnapshot(domain,{batchSize:300})}catch{continue}
+      try{snapshot=await this.fetchSnapshot(domain,{batchSize:300});snapshots.set(domain,snapshot)}catch{continue}
       const cloudMap=new Map(snapshot.rows.map(x=>[String(x.id||''),x]));
       for(const item of pendingRows){
         const id=String(item.entityId||item.payload?.id||'');if(!id)continue;
@@ -95,7 +95,7 @@ export class CloudReconciliationManager{
       }
     }
     const after=await this.pendingProtection();
-    return {...after,confirmedHistorical};
+    return {...after,confirmedHistorical,snapshots};
   }
   async fetchSnapshot(domain,{batchSize=250,onProgress=()=>{}}={}){
     const expected=await this.adapter.countEntities(domain),rows=[];let afterId=null;
@@ -108,9 +108,13 @@ export class CloudReconciliationManager{
     if(rows.length!==expected)throw new Error(`${domain}: snapshot incompleto (${rows.length}/${expected}).`);
     return {rows,expected};
   }
-  async fullReconcileDomain(cfg,protectedIds,{onProgress=()=>{}}={}){
+  async fullReconcileDomain(cfg,protectedIds,{onProgress=()=>{},snapshot=null}={}){
     const store=STORES[cfg.store];
-    const [local,{rows:remote,expected}]=await Promise.all([getAll(store),this.fetchSnapshot(cfg.id,{onProgress})]);
+    // Si reconcileHistoricalOutbox ya descargó este dominio, reutilizamos exactamente
+    // la misma fotografía. Evita un segundo barrido completo (especialmente costoso
+    // en BILLING tras importaciones masivas) sin cambiar reglas de protección ni Live Sync.
+    const snap=snapshot||await this.fetchSnapshot(cfg.id,{onProgress});
+    const [local,{rows:remote,expected}]=await Promise.all([getAll(store),Promise.resolve(snap)]);
     const localMap=new Map(local.map(x=>[String(x.id),x]));
     const remoteMap=new Map(remote.map(x=>[String(x.id),x]));
     const upserts=[];let protectedCount=0,updated=0,inserted=0,removed=0;
@@ -147,7 +151,7 @@ export class CloudReconciliationManager{
       let result={remote:remoteCount,local:local.length,inserted:0,updated:0,removed:0,protected:domainPending.length,exact:local.length===remoteCount&&domainPending.length===0,incrementalReceived:Number(incremental?.received||0)};
       // Si hay pendientes, si los conteos difieren o si el pull incremental falló, escanear snapshot autoritativo.
       if(domainPending.length||local.length!==remoteCount||incremental?.error){
-        result=await this.fullReconcileDomain(cfg,protection.ids,{onProgress:p=>{
+        result=await this.fullReconcileDomain(cfg,protection.ids,{snapshot:protection.snapshots?.get?.(cfg.id)||null,onProgress:p=>{
           const domainPct=p.total?Math.round((p.done/p.total)*(84/Math.max(1,total))):0;
           this.progress(Math.min(92,basePct+domainPct),`${label}: ${p.done} de ${p.total}`);
         }});
