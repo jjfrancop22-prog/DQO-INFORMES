@@ -81,7 +81,32 @@ function renderAll(){renderStats();renderPending();renderAuthorization();renderP
 async function saveDelivery(id){try{await reportsService.saveRealDelivery(id,$(`reportDelivery_${id}`)?.value,{userId:'LOCAL_USER'});toast('Fecha real guardada. El informe pasó a Autorización.');await api.refresh()}catch(e){toast(e.message||String(e),true)}}
 async function saveAuth(id){try{const status=$(`reportAuthStatus_${id}`)?.value;await reportsService.saveAuthorization(id,{status,date:$(`reportAuthDate_${id}`)?.value},{userId:'LOCAL_USER'});toast(isAuthorizationHold(status)?'Estado guardado. El informe permanece en Autorización.':'Autorización guardada. El informe pasó a Portal Cliente.');await api.refresh()}catch(e){toast(e.message||String(e),true)}}
 async function sendPortal(id,date=''){try{await reportsService.sendToPortal(id,date||$('reportsPortalBatchDate')?.value||today(),{userId:'LOCAL_USER'});toast('Informe enviado al Portal Cliente.');await api.refresh()}catch(e){toast(e.message||String(e),true)}}
-async function batchDelivery(){const date=$('reportsPendingBatchDate')?.value;if(!date){toast('Seleccione la fecha de entrega real.',true);return}const ids=[...selectedPending];if(!ids.length){toast('Seleccione al menos un informe.',true);return}try{for(const id of ids)await reportsService.saveRealDelivery(id,date,{userId:'LOCAL_USER'});selectedPending.clear();toast(`${ids.length} informe(s) enviados a Autorización.`);await api.refresh()}catch(e){toast(e.message||String(e),true)}}
+async function batchDelivery(){
+  const date=$('reportsPendingBatchDate')?.value;
+  if(!date){toast('Seleccione la fecha de entrega real.',true);return}
+  const ids=[...selectedPending];
+  if(!ids.length){toast('Seleccione al menos un informe.',true);return}
+  const btn=$('reportsPendingBatchSave'),pill=$('reportsPendingSelected');
+  const oldText=btn?.textContent||'Guardar seleccionados';
+  try{
+    if(btn){btn.disabled=true;btn.textContent=`Procesando ${ids.length}…`}
+    if(pill)pill.textContent=`Procesando ${ids.length}…`;
+    // Los informes son independientes: registrar el lote en paralelo evita esperar
+    // cada ciclo IndexedDB + auditoría + outbox de forma estrictamente secuencial.
+    await Promise.all(ids.map(id=>reportsService.saveRealDelivery(id,date,{userId:'LOCAL_USER'})));
+    selectedPending.clear();
+    // No repetir reconciliaciones globales del módulo después de un lote que solo
+    // cambió REPORTS. Recargar directamente el estado local confirmado.
+    await api.refresh({syncDerived:false});
+    toast(`${ids.length} informe(s) enviados a Autorización.`);
+  }catch(e){
+    // Refrescar el estado real por si una parte del lote alcanzó a confirmarse.
+    await api.refresh({syncDerived:false}).catch(()=>{});
+    toast(e.message||String(e),true);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldText}
+  }
+}
 async function batchAuth(){const status=$('reportsAuthBatchStatus')?.value;const hold=isAuthorizationHold(status);const date=hold?'':($('reportsAuthBatchDate')?.value||'');if(!AUTHORIZATION_LABELS[status]){toast('Seleccione el estado de autorización.',true);return}if(!hold&&!date){toast('Seleccione la fecha de autorización.',true);return}const ids=[...selectedAuth];if(!ids.length){toast('Seleccione al menos un informe.',true);return}try{for(const id of ids)await reportsService.saveAuthorization(id,{status,date},{userId:'LOCAL_USER'});selectedAuth.clear();toast(hold?`${ids.length} informe(s) guardados y mantenidos en Autorización.`:`${ids.length} informe(s) enviados a Portal Cliente.`);await api.refresh()}catch(e){toast(e.message||String(e),true)}}
 async function batchPortal(){const date=$('reportsPortalBatchDate')?.value||today();const ids=[...selectedPortal];if(!ids.length){toast('Seleccione al menos un informe.',true);return}try{for(const id of ids)await reportsService.sendToPortal(id,date,{userId:'LOCAL_USER'});selectedPortal.clear();toast(`${ids.length} informe(s) enviados al Portal.`);await api.refresh()}catch(e){toast(e.message||String(e),true)}}
 function selectVisible(kind,yes){let list=[];if(kind==='pending')list=rows.filter(r=>r.reportStatus==='PENDING_DELIVERY'&&searchMatch(r,($('searchReportsPending')?.value||'').trim().toLowerCase()));if(kind==='auth')list=rows.filter(r=>r.reportStatus==='AUTHORIZATION'&&searchMatch(r,($('searchReportsAuth')?.value||'').trim().toLowerCase()));if(kind==='portal')list=rows.filter(r=>r.reportStatus==='PORTAL_PENDING'&&searchMatch(r,($('searchReportsPortal')?.value||'').trim().toLowerCase()));const set=kind==='pending'?selectedPending:kind==='auth'?selectedAuth:selectedPortal;if(!yes)set.clear();else list.forEach(r=>set.add(r.id));renderAll()}

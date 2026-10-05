@@ -1,4 +1,4 @@
-import {getAll,putManyDirect,remove,put} from '../data/database.js';
+import {getAll,countStore,putManyDirect,remove,put} from '../data/database.js';
 import {STORES} from '../data/schema.js';
 import {outboxRepository} from '../data/outbox-repository.js';
 import {syncStateRepository} from '../data/sync-state-repository.js';
@@ -22,8 +22,17 @@ export class CloudReconciliationManager{
     this.adapter=adapter;
     this.bootstrap=new InitialCloudBootstrapService(adapter);
     this.running=false;
+    this.startedAt=0;
+    this.timer=null;
   }
+  setHeaderStatus(state='SYNCING',detail=''){
+    const el=$('pepSyncQuickStatus');if(!el)return;
+    const map={SYNCING:['⟳ Sincronizando','syncing'],OK:['✓ Sincronizado','ok'],WARN:['! Revisar sync','warn'],OFFLINE:['○ Sin conexión','warn']};
+    const [label,cls]=map[state]||map.SYNCING;el.textContent=label;el.className=`pep-sync-quick ${cls}`;el.title=detail||label;
+  }
+  elapsed(){return this.startedAt?Math.max(0,Math.round((Date.now()-this.startedAt)/1000)):0}
   show(title='Sincronizando PEP Enterprise…',detail='Comprobando Firebase antes de abrir el ERP.'){
+    this.startedAt=Date.now();this.setHeaderStatus('SYNCING',detail);clearInterval(this.timer);this.timer=setInterval(()=>{const d=$('newPcBootstrapDetail');if(d&&d.dataset.base)d.textContent=`${d.dataset.base} · ${this.elapsed()} s`;},1000);
     const root=$('newPcBootstrapGate');if(!root)return;
     root.classList.add('show');root.setAttribute('aria-hidden','false');
     if($('newPcBootstrapTitle'))$('newPcBootstrapTitle').textContent=title;
@@ -33,12 +42,13 @@ export class CloudReconciliationManager{
     if($('cloudReconciliationRows'))$('cloudReconciliationRows').innerHTML='';
     this.progress(2,detail);
   }
-  hide(){const root=$('newPcBootstrapGate');if(root){root.classList.remove('show');root.setAttribute('aria-hidden','true')}}
+  hide(){clearInterval(this.timer);this.timer=null;const root=$('newPcBootstrapGate');if(root){root.classList.remove('show');root.setAttribute('aria-hidden','true')}}
   progress(pct,text){
     const safe=Math.max(0,Math.min(100,Number(pct||0)));
     if($('newPcBootstrapBar'))$('newPcBootstrapBar').style.width=`${safe}%`;
     if($('newPcBootstrapPercent'))$('newPcBootstrapPercent').textContent=`${Math.round(safe)}%`;
-    if($('newPcBootstrapDetail')&&text)$('newPcBootstrapDetail').textContent=text;
+    if($('newPcBootstrapDetail')&&text){$('newPcBootstrapDetail').dataset.base=text;$('newPcBootstrapDetail').textContent=`${text} · ${this.elapsed()} s`;}
+    this.setHeaderStatus('SYNCING',text||'Sincronizando');
   }
   row(domain,label,status,detail=''){
     const host=$('cloudReconciliationRows');if(!host)return;
@@ -54,7 +64,7 @@ export class CloudReconciliationManager{
     if(!health.connected)throw new Error('No fue posible conectar Firebase para reconciliar datos.');
     return health;
   }
-  async localCounts(){const pairs=await Promise.all(SYNC_DOMAINS.map(async d=>[d.id,(await getAll(STORES[d.store])).length]));return Object.fromEntries(pairs)}
+  async localCounts(){const pairs=await Promise.all(SYNC_DOMAINS.map(async d=>[d.id,await countStore(STORES[d.store])]));return Object.fromEntries(pairs)}
   async pendingProtection(){
     const rows=(await outboxRepository.all()).filter(x=>['PENDING','ERROR'].includes(String(x.status||'').toUpperCase()));
     const ids=new Set(rows.map(x=>key(x.domain,x.entityId)));
@@ -193,12 +203,14 @@ export class CloudReconciliationManager{
       await put(STORES.meta,{id:RECONCILE_META_ID,type:'CLOUD_RECONCILIATION',status:'COMPLETE',mode,completedAt,updatedAt:completedAt,deviceId:getDeviceId(),results});
       await auditRepository.record({action:'CLOUD_RECONCILIATION_COMPLETE',domain:'SYSTEM',entityId:getDeviceId(),entityType:'CloudReconciliation',userId:'AUTHENTICATED_USER',metadata:{mode,results:results.map(x=>({domain:x.domain,local:x.local,remote:x.remote,protected:x.protected}))}});
       this.progress(100,protection.count?'Datos reconciliados. Los cambios pendientes permanecen protegidos.':'Cloud y Local verificados. Iniciando ERP…');
-      await new Promise(r=>setTimeout(r,350));this.hide();
-      return {ok:true,mode,results,protected:protection.count,confirmedHistorical:Number(protection.confirmedHistorical||0)};
+      this.setHeaderStatus('OK',`Sincronización verificada en ${this.elapsed()} s`);
+      await new Promise(r=>setTimeout(r,180));this.hide();
+      return {ok:true,mode,results,protected:protection.count,confirmedHistorical:Number(protection.confirmedHistorical||0),elapsedSeconds:this.elapsed()};
     }catch(error){
       const msg=String(error?.message||error);
       if($('newPcBootstrapTitle'))$('newPcBootstrapTitle').textContent='No se pudo verificar la sincronización';
       this.progress(0,msg);
+      this.setHeaderStatus('WARN',msg);
       this.hide();
       throw error;
     }finally{this.running=false}

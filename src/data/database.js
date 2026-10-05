@@ -37,6 +37,7 @@ export async function tx(storeNames,mode,fn){
 export async function put(store,value){return tx([store],'readwrite',t=>t.objectStore(store).put(value))}
 export async function get(store,id){const db=await openDB();return new Promise((resolve,reject)=>{const t=db.transaction(store,'readonly'),r=t.objectStore(store).get(id);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}
 export async function getAll(store){const db=await openDB();return new Promise((resolve,reject)=>{const t=db.transaction(store,'readonly'),r=t.objectStore(store).getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
+export async function countStore(store){const db=await openDB();return new Promise((resolve,reject)=>{const t=db.transaction(store,'readonly'),r=t.objectStore(store).count();r.onsuccess=()=>resolve(Number(r.result||0));r.onerror=()=>reject(r.error)})}
 export async function remove(store,id){return tx([store],'readwrite',t=>t.objectStore(store).delete(id))}
 export async function clearStore(store){return tx([store],'readwrite',t=>t.objectStore(store).clear())}
 export async function putManyDirect(store,rows=[]){return tx([store],'readwrite',t=>{const s=t.objectStore(store);for(const row of rows)s.put(row);return rows.length})}
