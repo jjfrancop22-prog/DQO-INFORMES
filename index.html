@@ -314,7 +314,7 @@ body.enterprise-locked>header,body.enterprise-locked>nav,body.enterprise-locked>
 <div class="toolbar"><div><h2>💳 Cuentas por Cobrar — Workspace de cobranza</h2><p class="sub">Se alimenta automáticamente desde Facturación cuando el registro está FACTURADO y tiene número y fecha de factura. Facturación permanece intacta; cobranza trabaja únicamente en <span class="mono">receivables</span>.</p></div><div class="actions" style="margin-top:0"><button class="btn blue" id="exportReceivablesExcel" type="button">📗 Excel de cartera</button><button class="btn primary" id="saveVisibleReceivables" type="button">💾 Guardar visibles</button></div></div>
 <div class="notice"><b>Regla automática:</b> Subtotal + IVA = Total. Saldo = Total − Valor pagado − Retenciones − Notas de crédito. Si existe saldo y la fecha de vencimiento ya pasó, el expediente se marca visualmente como VENCIDO.</div>
 <div class="filterbar"><input id="receivablesSearch" class="grow" placeholder="Buscar factura, código, cliente, cotización..."><select id="receivablesStatusFilter"><option value="">Todos los estados</option><option value="PENDIENTE">Pendiente</option><option value="CRÉDITO">Crédito</option><option value="PARCIAL">Parcial</option><option value="PAGADO">Pagado</option><option value="VENCIDO">Vencido</option><option value="ANULADO">Anulado</option></select><select id="receivablesClientFilter"><option value="">Todos los clientes</option></select><select id="receivablesMonthFilter"><option value="">Todos los meses</option><option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option><option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option><option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option></select><select id="receivablesYearFilter"><option value="">Todos los años</option></select><button class="btn secondary small" id="clearReceivablesFilters" type="button">× Limpiar filtros</button><span class="result-pill" id="receivablesVisibleCount">0 visibles</span></div>
-<div id="receivablesTable"></div>
+<div id="receivablesTable"></div><div id="receivablesPageNav" style="display:flex;gap:12px;align-items:center;justify-content:center;padding:12px"></div>
 </div>
 </section>
 
@@ -349,7 +349,7 @@ body.enterprise-locked>header,body.enterprise-locked>nav,body.enterprise-locked>
     <div class="trace-main-layout">
       <div class="trace-board">
         <div class="trace-board-head"><h3>Expedientes y etapa actual</h3><span id="trackingVisible" class="trace-board-count">0 visibles</span></div>
-        <div id="trackingTable"></div>
+        <div id="trackingTable"></div><div id="trackingPageNav" style="display:flex;gap:12px;align-items:center;justify-content:center;padding:12px"></div>
       </div>
       <aside class="trace-side" id="trackingDetail"></aside>
     </div>

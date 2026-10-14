@@ -7,7 +7,9 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const fmt=v=>{if(!v)return '—';const d=new Date(`${String(v).slice(0,10)}T12:00:00`);return Number.isNaN(d.getTime())?esc(v):d.toLocaleDateString('es-EC')};
 let rows=[],initialized=false,currentPage=1;
-const PAGE_SIZE=100;
+let rowById=new Map();
+const PAGE_SIZE=25;
+let refreshInFlight=null;
 let searchTimer=null;
 const drafts=new Map();
 const dirtyIds=new Set();
@@ -22,8 +24,8 @@ function filtered(){const q=($('billingSearch')?.value||'').trim().toLowerCase()
 function statusBadge(s){const cls=s==='FACTURADO'?'green':s==='FACTURA PARCIAL'?'blue':s==='EN ESPERA'?'amber':s==='NO FACTURAR'?'purple':'';return `<span class="badge ${cls}">${esc(s||'PENDIENTE')}</span>`}
 function renderStats(){const total=rows.length,pending=rows.filter(r=>effective(r).billingStatus==='PENDIENTE').length,fact=rows.filter(r=>effective(r).billingStatus==='FACTURADO').length,partial=rows.filter(r=>effective(r).billingStatus==='FACTURA PARCIAL').length,wait=rows.filter(r=>effective(r).billingStatus==='EN ESPERA').length,no=rows.filter(r=>effective(r).billingStatus==='NO FACTURAR').length;if($('billingStats'))$('billingStats').innerHTML=[['Total',total],['Pendientes',pending],['Facturados',fact],['Factura parcial',partial],['En espera',wait],['No facturar',no]].map(([l,v])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');if($('countBilling'))$('countBilling').textContent=total;if($('countBillingControl'))$('countBillingControl').textContent=pending}
 function options(current){return BILLING_STATUSES.map(s=>`<option value="${s}" ${s===current?'selected':''}>${s}</option>`).join('')}
-function persistedFacturado(id){const r=rows.find(x=>x.id===id);return r?.billingStatus==='FACTURADO'}
-async function unlockFacturado(id){const r=rows.find(x=>x.id===id);if(!r)return;try{const ok=await billingCorrectionGate.authorize(r);if(!ok)return;unlockedFacturados.add(id);toast(`Código ${r.code||''} habilitado para corrección controlada.`);render()}catch(e){toast(e.message||String(e),true)}}
+function persistedFacturado(id){const r=rowById.get(id);return r?.billingStatus==='FACTURADO'}
+async function unlockFacturado(id){const r=rowById.get(id);if(!r)return;try{const ok=await billingCorrectionGate.authorize(r);if(!ok)return;unlockedFacturados.add(id);toast(`Código ${r.code||''} habilitado para corrección controlada.`);render()}catch(e){toast(e.message||String(e),true)}}
 function updateSaveAllButton(){const b=$('saveVisibleBilling');if(!b)return;if(adminReadOnly()){b.textContent='👁 Solo lectura';b.disabled=true;b.title='ADMINISTRADOR: acceso de consulta a Facturación';return}const n=dirtyIds.size;b.textContent=n?`💾 Guardar cambios (${n})`:'💾 Guardar cambios';b.disabled=n===0;b.title=n?`Guardar ${n} registro(s) editado(s) en esta sesión`:'No hay cambios pendientes'}
 function pageButton(label,page,disabled=false){return `<button class="btn secondary small" type="button" data-bill-page="${page}" ${disabled?'disabled':''}>${label}</button>`}
 function render(){
@@ -60,7 +62,7 @@ async function applyBillingExcel(){
  try{
   for(let i=0;i<pending.length;i+=BATCH){
    const batch=pending.slice(i,i+BATCH);
-   await Promise.all(batch.map(async m=>{try{const r=rows.find(x=>x.id===m.id);if(!r){failed++;if(errors.length<10)errors.push(`${m.code}: registro ERP no disponible`);return}if(r.billingStatus==='FACTURADO'){skipped++;return}const same=norm(r.quotation)===norm(m.quotation)&&norm(r.invoice)===norm(m.invoice)&&String(r.invoiceDate||'')===String(m.invoiceDate||'')&&norm(r.billingObservation)===norm(m.billingObservation);if(same){skipped++;return}await billingService.save(m.id,{...persistedData(m.id),quotation:m.quotation,invoice:m.invoice,invoiceDate:m.invoiceDate,billingObservation:m.billingObservation},{userId:billingCorrectionGate.actor()||'BILLING_EXCEL_IMPORT'});saved++}catch(e){failed++;if(errors.length<10)errors.push(`${m.code}: ${e?.message||String(e)}`)}}));
+   await Promise.all(batch.map(async m=>{try{const r=rowById.get(m.id);if(!r){failed++;if(errors.length<10)errors.push(`${m.code}: registro ERP no disponible`);return}if(r.billingStatus==='FACTURADO'){skipped++;return}const same=norm(r.quotation)===norm(m.quotation)&&norm(r.invoice)===norm(m.invoice)&&String(r.invoiceDate||'')===String(m.invoiceDate||'')&&norm(r.billingObservation)===norm(m.billingObservation);if(same){skipped++;return}await billingService.save(m.id,{...persistedData(m.id),quotation:m.quotation,invoice:m.invoice,invoiceDate:m.invoiceDate,billingObservation:m.billingObservation},{userId:billingCorrectionGate.actor()||'BILLING_EXCEL_IMPORT'});saved++}catch(e){failed++;if(errors.length<10)errors.push(`${m.code}: ${e?.message||String(e)}`)}}));
    paint();await new Promise(resolve=>setTimeout(resolve,0));
   }
  }finally{
@@ -69,16 +71,30 @@ async function applyBillingExcel(){
   billingImportPanel(`<div class="notice"><b>Importación terminada.</b> ${saved} registro(s) actualizados${skipped?` · ${skipped} ya iguales/protegidos`:''}${failed?` · ${failed} con error`:''}. La auditoría y Outbox se conservaron.${detail}</div>`);
  }
  toast(failed?`Importación terminada: ${saved} guardados y ${failed} con error.`:`${saved} registro(s) de facturación actualizados.`,!!failed);
- try{await api.refresh({preserveDrafts:true})}catch(e){toast(`Los datos se guardaron, pero no se pudo refrescar la vista: ${e?.message||String(e)}`,true)}
+ try{await api.refresh({preserveDrafts:true,syncDerived:false})}catch(e){toast(`Los datos se guardaron, pero no se pudo refrescar la vista: ${e?.message||String(e)}`,true)}
 }
-function persistedData(id){const r=rows.find(x=>x.id===id)||{};return {quotation:r.quotation||'',invoice:r.invoice||'',invoiceDate:r.invoiceDate||'',subtotal:r.subtotal||0,billingStatus:r.billingStatus||'PENDIENTE',billingObservation:r.billingObservation||''}}
+function persistedData(id){const r=rowById.get(id)||{};return {quotation:r.quotation||'',invoice:r.invoice||'',invoiceDate:r.invoiceDate||'',subtotal:r.subtotal||0,billingStatus:r.billingStatus||'PENDIENTE',billingObservation:r.billingObservation||''}}
 function data(id){return {...persistedData(id),...(drafts.get(id)||{})}}
 function rememberField(el){if(adminReadOnly())return;const id=el?.dataset?.billDirty,field=el?.dataset?.billField;if(!id||!field)return;const next={...data(id),[field]:el.value};drafts.set(id,next);dirtyIds.add(id);$(`billrow_${id}`)?.classList.add('dirty');updateSaveAllButton()}
-async function save(id,silent=false,{refresh=true}={}){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return false}try{const controlledCorrection=persistedFacturado(id)&&unlockedFacturados.has(id);await billingService.save(id,data(id),{userId:billingCorrectionGate.actor(),controlledCorrection});drafts.delete(id);dirtyIds.delete(id);unlockedFacturados.delete(id);if(!silent)toast('Facturación guardada correctamente.');if(refresh)await api.refresh({preserveDrafts:true});else updateSaveAllButton();return true}catch(e){toast(e.message||String(e),true);return false}}
-async function savePending(){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return}const ids=[...dirtyIds];if(!ids.length){toast('No hay cambios pendientes para guardar.');return}let saved=0;try{for(const id of ids){const ok=await save(id,true,{refresh:false});if(!ok)throw new Error('No fue posible guardar todos los cambios.');saved++}toast(`${saved} registro(s) guardados correctamente.`);await api.refresh({preserveDrafts:true})}catch(e){toast(e.message||String(e),true);await api.refresh({preserveDrafts:true})}}
+async function save(id,silent=false,{refresh=true}={}){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return false}try{const controlledCorrection=persistedFacturado(id)&&unlockedFacturados.has(id);await billingService.save(id,data(id),{userId:billingCorrectionGate.actor(),controlledCorrection});drafts.delete(id);dirtyIds.delete(id);unlockedFacturados.delete(id);if(!silent)toast('Facturación guardada correctamente.');if(refresh)await api.refresh({preserveDrafts:true,syncDerived:false});else updateSaveAllButton();return true}catch(e){toast(e.message||String(e),true);return false}}
+async function savePending(){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return}const ids=[...dirtyIds];if(!ids.length){toast('No hay cambios pendientes para guardar.');return}let saved=0;try{for(const id of ids){const ok=await save(id,true,{refresh:false});if(!ok)throw new Error('No fue posible guardar todos los cambios.');saved++}toast(`${saved} registro(s) guardados correctamente.`);await api.refresh({preserveDrafts:true,syncDerived:false})}catch(e){toast(e.message||String(e),true);await api.refresh({preserveDrafts:true,syncDerived:false})}}
 function clearFilters(){['billingSearch','billingMonth','billingStatusFilter','billingTypeFilter'].forEach(id=>{if($(id))$(id).value=''});currentPage=1;render()}
 const api={
- async refresh({syncDerived=true,preserveDrafts=true}={}){if(syncDerived){await billingService.reconcileDuplicates();await billingService.ensureFromLaboratory();}const [billingRows,samples]=await Promise.all([billingService.all(),repositories.samples.all()]);const activeSampleIds=new Set(samples.map(x=>x.id));rows=visibleForActiveSamples(billingRows,activeSampleIds).sort((a,b)=>(b.receptionDate||'').localeCompare(a.receptionDate||'')||Number(b.code||0)-Number(a.code||0));if(!preserveDrafts){drafts.clear();dirtyIds.clear()}else{const valid=new Set(rows.map(r=>r.id));for(const id of [...drafts.keys()])if(!valid.has(id)){drafts.delete(id);dirtyIds.delete(id)}}renderStats();render()},
+ async refresh({syncDerived=true,preserveDrafts=true}={}){
+  // Evita lecturas y reconciliaciones simultáneas durante operaciones continuas.
+  if(refreshInFlight){await refreshInFlight;if(!syncDerived)return;}
+  const work=(async()=>{
+   if(syncDerived){await billingService.reconcileDuplicates();await billingService.ensureFromLaboratory();}
+   const [billingRows,samples]=await Promise.all([billingService.all(),repositories.samples.all()]);
+   const activeSampleIds=new Set(samples.map(x=>x.id));
+   rows=visibleForActiveSamples(billingRows,activeSampleIds).sort((a,b)=>(b.receptionDate||'').localeCompare(a.receptionDate||'')||Number(b.code||0)-Number(a.code||0));
+   rowById=new Map(rows.map(r=>[r.id,r]));
+   if(!preserveDrafts){drafts.clear();dirtyIds.clear()}else{for(const id of [...drafts.keys()])if(!rowById.has(id)){drafts.delete(id);dirtyIds.delete(id)}}
+   renderStats();render();
+  })();
+  refreshInFlight=work;
+  try{await work}finally{if(refreshInFlight===work)refreshInFlight=null}
+ },
  init(){if(initialized)return;initialized=true;$('billingSearch')?.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{currentPage=1;render()},180)});['billingMonth','billingStatusFilter','billingTypeFilter'].forEach(id=>$(id)?.addEventListener('change',()=>{currentPage=1;render()}));$('saveVisibleBilling')?.addEventListener('click',savePending);$('billingImportExcel')?.addEventListener('click',()=>{if(adminReadOnly()){toast('ADMINISTRADOR mantiene Facturación en solo lectura.',true);return}$('billingExcelFile')?.click()});$('billingExcelFile')?.addEventListener('change',e=>{const f=e.target.files?.[0];if(f)previewBillingExcel(f);e.target.value=''});$('clearBillingFilters')?.addEventListener('click',clearFilters);document.addEventListener('input',e=>{const x=e.target.closest('[data-bill-dirty]');if(x)rememberField(x)});document.addEventListener('change',e=>{const x=e.target.closest('[data-bill-dirty]');if(x){rememberField(x);if(x.dataset.billField==='billingStatus')render()}});document.addEventListener('click',e=>{const pg=e.target.closest('[data-bill-page]');if(pg&&!pg.disabled){currentPage=Number(pg.dataset.billPage)||1;render();$('billingTable')?.scrollIntoView({block:'start'});return}const u=e.target.closest('[data-bill-unlock]');if(u){unlockFacturado(u.dataset.billUnlock);return}const b=e.target.closest('[data-bill-save]');if(b)save(b.dataset.billSave)})}
 };
 export const billingUI=api;
