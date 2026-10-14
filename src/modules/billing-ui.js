@@ -10,6 +10,10 @@ let rows=[],initialized=false,currentPage=1;
 let rowById=new Map();
 const PAGE_SIZE=25;
 let refreshInFlight=null;
+// Reutiliza una instantánea reciente al reabrir la pestaña; los guardados fuerzan lectura.
+const OPEN_CACHE_MS=15000;
+let lastFullRefresh=0;
+let derivedInitialized=false;
 let searchTimer=null;
 const drafts=new Map();
 const dirtyIds=new Set();
@@ -71,25 +75,27 @@ async function applyBillingExcel(){
   billingImportPanel(`<div class="notice"><b>Importación terminada.</b> ${saved} registro(s) actualizados${skipped?` · ${skipped} ya iguales/protegidos`:''}${failed?` · ${failed} con error`:''}. La auditoría y Outbox se conservaron.${detail}</div>`);
  }
  toast(failed?`Importación terminada: ${saved} guardados y ${failed} con error.`:`${saved} registro(s) de facturación actualizados.`,!!failed);
- try{await api.refresh({preserveDrafts:true,syncDerived:false})}catch(e){toast(`Los datos se guardaron, pero no se pudo refrescar la vista: ${e?.message||String(e)}`,true)}
+ try{await api.refresh({preserveDrafts:true,syncDerived:false,force:true})}catch(e){toast(`Los datos se guardaron, pero no se pudo refrescar la vista: ${e?.message||String(e)}`,true)}
 }
 function persistedData(id){const r=rowById.get(id)||{};return {quotation:r.quotation||'',invoice:r.invoice||'',invoiceDate:r.invoiceDate||'',subtotal:r.subtotal||0,billingStatus:r.billingStatus||'PENDIENTE',billingObservation:r.billingObservation||''}}
 function data(id){return {...persistedData(id),...(drafts.get(id)||{})}}
 function rememberField(el){if(adminReadOnly())return;const id=el?.dataset?.billDirty,field=el?.dataset?.billField;if(!id||!field)return;const next={...data(id),[field]:el.value};drafts.set(id,next);dirtyIds.add(id);$(`billrow_${id}`)?.classList.add('dirty');updateSaveAllButton()}
-async function save(id,silent=false,{refresh=true}={}){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return false}try{const controlledCorrection=persistedFacturado(id)&&unlockedFacturados.has(id);await billingService.save(id,data(id),{userId:billingCorrectionGate.actor(),controlledCorrection});drafts.delete(id);dirtyIds.delete(id);unlockedFacturados.delete(id);if(!silent)toast('Facturación guardada correctamente.');if(refresh)await api.refresh({preserveDrafts:true,syncDerived:false});else updateSaveAllButton();return true}catch(e){toast(e.message||String(e),true);return false}}
-async function savePending(){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return}const ids=[...dirtyIds];if(!ids.length){toast('No hay cambios pendientes para guardar.');return}let saved=0;try{for(const id of ids){const ok=await save(id,true,{refresh:false});if(!ok)throw new Error('No fue posible guardar todos los cambios.');saved++}toast(`${saved} registro(s) guardados correctamente.`);await api.refresh({preserveDrafts:true,syncDerived:false})}catch(e){toast(e.message||String(e),true);await api.refresh({preserveDrafts:true,syncDerived:false})}}
+async function save(id,silent=false,{refresh=true}={}){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return false}try{const controlledCorrection=persistedFacturado(id)&&unlockedFacturados.has(id);await billingService.save(id,data(id),{userId:billingCorrectionGate.actor(),controlledCorrection});drafts.delete(id);dirtyIds.delete(id);unlockedFacturados.delete(id);if(!silent)toast('Facturación guardada correctamente.');if(refresh)await api.refresh({preserveDrafts:true,syncDerived:false,force:true});else updateSaveAllButton();return true}catch(e){toast(e.message||String(e),true);return false}}
+async function savePending(){if(adminReadOnly()){toast('ADMINISTRADOR tiene acceso de solo lectura en Facturación.',true);return}const ids=[...dirtyIds];if(!ids.length){toast('No hay cambios pendientes para guardar.');return}let saved=0;try{for(const id of ids){const ok=await save(id,true,{refresh:false});if(!ok)throw new Error('No fue posible guardar todos los cambios.');saved++}toast(`${saved} registro(s) guardados correctamente.`);await api.refresh({preserveDrafts:true,syncDerived:false,force:true})}catch(e){toast(e.message||String(e),true);await api.refresh({preserveDrafts:true,syncDerived:false,force:true})}}
 function clearFilters(){['billingSearch','billingMonth','billingStatusFilter','billingTypeFilter'].forEach(id=>{if($(id))$(id).value=''});currentPage=1;render()}
 const api={
- async refresh({syncDerived=true,preserveDrafts=true}={}){
+ async refresh({syncDerived=true,preserveDrafts=true,force=false}={}){
+  if(!force && derivedInitialized && rows.length && Date.now()-lastFullRefresh<OPEN_CACHE_MS){renderStats();render();return;}
   // Evita lecturas y reconciliaciones simultáneas durante operaciones continuas.
   if(refreshInFlight){await refreshInFlight;if(!syncDerived)return;}
   const work=(async()=>{
-   if(syncDerived){await billingService.reconcileDuplicates();await billingService.ensureFromLaboratory();}
+   if(syncDerived && !derivedInitialized){await billingService.reconcileDuplicates();await billingService.ensureFromLaboratory();derivedInitialized=true;}
    const [billingRows,samples]=await Promise.all([billingService.all(),repositories.samples.all()]);
    const activeSampleIds=new Set(samples.map(x=>x.id));
    rows=visibleForActiveSamples(billingRows,activeSampleIds).sort((a,b)=>(b.receptionDate||'').localeCompare(a.receptionDate||'')||Number(b.code||0)-Number(a.code||0));
    rowById=new Map(rows.map(r=>[r.id,r]));
    if(!preserveDrafts){drafts.clear();dirtyIds.clear()}else{for(const id of [...drafts.keys()])if(!rowById.has(id)){drafts.delete(id);dirtyIds.delete(id)}}
+   lastFullRefresh=Date.now();
    renderStats();render();
   })();
   refreshInFlight=work;
